@@ -1,5 +1,9 @@
 <?php
 
+// La configuracion general define la zona horaria del instituto, que esta
+// clase necesita para poner el reloj de MySQL en hora.
+require_once __DIR__ . '/app.php';
+
 // Archivo de conexion a la base de datos
 // Utiliza PDO para realizar consultas seguras con sentencias preparadas
 //
@@ -41,11 +45,62 @@ class Database
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES   => false
             ]);
+
+            self::igualarZonaHoraria();
         } catch (PDOException $e) {
             self::mostrarErrorConexion($e, $dbname);
         }
 
         return self::$conexion;
+    }
+
+    /**
+     * Pone el reloj de MySQL en la misma hora que el de PHP.
+     *
+     * En XAMPP los dos van en la hora local y no se nota, pero en un servidor
+     * de produccion MySQL suele correr en UTC mientras PHP usa la zona del
+     * instituto (UTC-5). Ahi aparece un fallo silencioso y muy confuso:
+     *
+     *   MySQL calcula   entrada_expira = NOW() + los minutos del QR  -> en UTC
+     *   PHP lee esa fecha con strtotime()                     -> como UTC-5
+     *
+     * ...y las cinco horas de diferencia se suman al plazo: un codigo QR que
+     * debia durar unos minutos aparecia como "Caduca en 299:45" y
+     * seguia siendo valido toda la tarde, que es justo lo que la caducidad
+     * tenia que impedir.
+     *
+     * Se corrige fijando en la conexion el desfase horario real de la zona
+     * configurada en la aplicacion.
+     */
+    private static function igualarZonaHoraria(): void
+    {
+        /*
+         * La zona se toma de App::ZONA_HORARIA y NO de date_default_timezone_get(),
+         * porque esta ultima depende de que App::iniciar() ya se haya ejecutado.
+         * Un script que use los modelos sin arrancar la aplicacion (una tarea
+         * programada, una migracion) heredaria la zona por defecto de PHP y
+         * dejaria el reloj de MySQL desplazado sin que nada lo advirtiera.
+         */
+        $zona = class_exists('App') ? App::ZONA_HORARIA : date_default_timezone_get();
+
+        // Desfase actual con formato "+HH:MM". Se calcula en cada conexion
+        // porque cambia con el horario de verano donde se aplica.
+        try {
+            $ahora = new DateTime('now', new DateTimeZone($zona));
+        } catch (Exception $e) {
+            $ahora = new DateTime('now');
+        }
+
+        $desfase = $ahora->format('P');
+
+        try {
+            self::$conexion->exec("SET time_zone = '{$desfase}'");
+        } catch (PDOException $e) {
+            // Algunos servidores no tienen cargadas las tablas de zonas
+            // horarias. No es motivo para tumbar la aplicacion: se registra
+            // y se sigue, aunque las horas puedan quedar desplazadas.
+            error_log('[base de datos] No se pudo fijar la zona horaria: ' . $e->getMessage());
+        }
     }
 
     // Prepara un texto para usarlo dentro de un LIKE.

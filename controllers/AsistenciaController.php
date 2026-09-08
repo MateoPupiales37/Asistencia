@@ -111,7 +111,7 @@ class AsistenciaController extends BaseController
             $this->fallo('Esta clase ya fue finalizada por el docente.', $codigo, $sesion);
         }
 
-        // La caducidad de 15 minutos es lo que impide registrarse desde fuera del aula
+        // La caducidad corta es lo que impide registrarse desde fuera del aula
         if (!$sesion['vigente']) {
             $this->fallo(
                 'Este código QR ya caducó. Los códigos duran ' . Catalogo::MINUTOS_QR

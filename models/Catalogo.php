@@ -9,7 +9,7 @@ require_once __DIR__ . '/Semestre.php';
 class Catalogo
 {
     // Minutos que dura un codigo QR antes de caducar
-    public const MINUTOS_QR = 15;
+    public const MINUTOS_QR = 5;
 
     // Ambientes en los que se puede dictar una misma materia.
     // Deben coincidir con el ENUM ambiente de la tabla cursos.

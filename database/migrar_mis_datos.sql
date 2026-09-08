@@ -10,7 +10,7 @@
 -- Las contrasenas viajan como hash Bcrypt: cada docente entra con la
 -- misma clave de siempre y la contrasena nunca existe en texto legible.
 --
--- Generado el 08/09/2026 06:33
+-- Generado el 08/09/2026 07:22
 -- =====================================================================
 
 SET NAMES utf8mb4;
@@ -38,6 +38,12 @@ ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), apellido=VALUES(apellido),
 
 -- ------------------------------------------------------------------
 -- Semestres del catalogo
+--
+-- El instalador crea seis semestres de ejemplo (Primero a Sexto). Si el
+-- instituto solo usa algunos, los demas sobran y ensucian todos los
+-- desplegables del sistema, asi que se retiran los que no esten aqui.
+-- Solo se borran los que no tengan ningun estudiante ni curso: si uno
+-- esta en uso se conserva, porque eliminarlo dejaria registros huerfanos.
 -- ------------------------------------------------------------------
 INSERT INTO semestres (id, nombre, orden, activo) VALUES (1, 'Primer Semestre', 1, 1)
 ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), orden=VALUES(orden), activo=VALUES(activo);
@@ -47,6 +53,11 @@ INSERT INTO semestres (id, nombre, orden, activo) VALUES (3, 'Tercer Semestre', 
 ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), orden=VALUES(orden), activo=VALUES(activo);
 INSERT INTO semestres (id, nombre, orden, activo) VALUES (4, 'Cuarto Semestre', 4, 1)
 ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), orden=VALUES(orden), activo=VALUES(activo);
+
+DELETE FROM semestres
+ WHERE nombre NOT IN ('Primer Semestre', 'Segundo Semestre', 'Tercer Semestre', 'Cuarto Semestre')
+   AND nombre NOT IN (SELECT DISTINCT semestre FROM estudiantes)
+   AND nombre NOT IN (SELECT DISTINCT semestre FROM cursos);
 
 -- ------------------------------------------------------------------
 -- Materias

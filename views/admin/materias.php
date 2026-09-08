@@ -346,7 +346,14 @@ foreach ($materias as $m) {
             y cursos que ya lo usaban.
         </p>
 
-        <div class="table-responsive mb-4">
+        <?php
+        /* Esta lista vive dentro del modal, que queda FUERA de la region
+           "materias". Sin marcarla como region propia, la capa AJAX no la
+           refrescaba: al borrar un semestre la fila seguia en pantalla y, al
+           pulsar Eliminar otra vez sobre ella, el servidor respondia "Ese
+           semestre ya no existe". */
+        ?>
+        <div class="table-responsive mb-4" data-region="lista-semestres">
             <table class="table">
                 <thead>
                     <tr><th>Orden</th><th>Nombre</th><th>Estado</th><th class="text-right">Acción</th></tr>

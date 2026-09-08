@@ -1356,6 +1356,13 @@ class DocenteController extends BaseController
      */
     private function avisoDeRed(): ?array
     {
+        // En un servidor publico estos avisos no aplican: el QR lleva el
+        // dominio real y cualquier celular con internet lo abre. Recomendar
+        // "entra por localhost" alli no significa nada y solo estorba.
+        if (!App::esEntornoLocal()) {
+            return null;
+        }
+
         if (!App::esHostLocal()) {
             // Entro por una IP. Funciona, pero esa direccion CAMBIA cada vez
             // que el equipo se conecta a otra red wifi, y entonces el enlace
@@ -1408,6 +1415,12 @@ class DocenteController extends BaseController
      */
     private function comprobarAlcance(): array
     {
+        // En internet no hay nada que comprobar: el dominio es publico y lo
+        // alcanza cualquier telefono con datos, sin depender del wifi del aula.
+        if (!App::esEntornoLocal()) {
+            return ['ok' => true, 'texto' => ''];
+        }
+
         $ip = App::ipDeRed();
 
         if ($ip === null) {

@@ -322,6 +322,35 @@ class App
         return $protocolo . '://' . $host . self::rutaBase() . $ruta;
     }
 
+    /**
+     * ¿El sistema esta corriendo en un equipo del aula (XAMPP) o en un
+     * servidor publico de internet?
+     *
+     * Sirve para no mostrar en produccion los avisos que solo tienen sentido
+     * en local, como "entra por localhost en vez de por la IP": con un dominio
+     * propio esa recomendacion no significa nada y solo confunde al docente.
+     */
+    public static function esEntornoLocal(): bool
+    {
+        $host = strtolower(explode(':', trim((string)($_SERVER['HTTP_HOST'] ?? ''), '[]'))[0]);
+
+        if ($host === '' || self::esHostLocal($host)) {
+            return true;
+        }
+
+        // Una IP de red privada (192.168.x, 10.x, 172.16-31.x) es el equipo
+        // del aula compartido por wifi; cualquier dominio con nombre, no.
+        if (filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+            return filter_var(
+                $host,
+                FILTER_VALIDATE_IP,
+                FILTER_FLAG_IPV4 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+            ) === false;
+        }
+
+        return false;
+    }
+
     /** true si el host escrito en el navegador solo funciona en esta maquina */
     public static function esHostLocal(?string $host = null): bool
     {

@@ -5,8 +5,11 @@ require_once __DIR__ . '/Catalogo.php';
 
 // Modelo Sesion: una clase concreta con sus dos codigos QR.
 //
-//   codigo_entrada -> se genera al abrir la clase, caduca a los 15 minutos
-//   codigo_salida  -> lo genera el docente cuando quiere, caduca a los 15 minutos
+//   codigo_entrada -> se genera al abrir la clase y caduca solo
+//   codigo_salida  -> lo genera el docente cuando termina y tambien caduca
+//
+// Los minutos de vida salen de Catalogo::MINUTOS_QR: un unico sitio donde
+// cambiarlos para todo el sistema.
 //
 // Los codigos son irrepetibles a nivel de toda la tabla (clave UNIQUE), asi que
 // un QR de una clase pasada jamas sirve para registrarse en otra.
@@ -104,9 +107,9 @@ class Sesion
     // Acciones sobre la clase
     // ------------------------------------------------------------------
 
-    /** Abre una clase y genera su codigo QR de entrada, valido 15 minutos */
+    /** Abre una clase y genera su codigo QR de entrada */
     /**
-     * Abre una clase y genera su codigo QR de entrada, valido 15 minutos.
+     * Abre una clase y genera su codigo QR de entrada.
      *
      * Si el navegador del docente entrego coordenadas, quedan guardadas como
      * el centro de la geocerca: a partir de ahi, solo quien este dentro del
@@ -154,7 +157,7 @@ class Sesion
     }
 
     /**
-     * Renueva el QR de entrada por otros 15 minutos (para los atrasados).
+     * Renueva el QR de entrada por otro periodo completo (para los atrasados).
      *
      * Al hacerlo CADUCA el QR de salida: solo puede haber un codigo vivo a la
      * vez. Si convivieran, un alumno que llega tarde podria escanear por error
@@ -191,7 +194,7 @@ class Sesion
     }
 
     /**
-     * Genera el QR de salida de la clase activa, valido 15 minutos.
+     * Genera el QR de salida de la clase activa.
      *
      * Al generarlo se CADUCA el QR de entrada, porque la clase pasa a su etapa
      * de cierre: quien no alcanzo a marcar entrada ya no debe poder hacerlo
