@@ -3349,6 +3349,24 @@ input[type="file"].form-control {
         align-items: flex-start;
         justify-content: space-between;
         gap: 18px;
+        /*
+           Si el titulo y los botones no caben en una linea, el grupo de
+           botones baja entero. Sin esto el titulo era el unico que podia
+           encogerse (los botones son flex:0 0 auto), y en anchos medianos se
+           quedaba con el espacio de una letra: "Estudiantes del Curso" salia
+           escrito en vertical, un caracter por linea.
+        */
+        flex-wrap: wrap;
+    }
+
+    /* El bloque del titulo reclama un ancho minimo utilizable antes de ceder */
+    .page-header > :first-child {
+        flex: 1 1 clamp(180px, 40%, 420px);
+    }
+
+    /* Los botones conservan su tamaño y saltan de linea si hace falta */
+    .page-header > :last-child {
+        flex: 0 1 auto;
     }
 
     /* En pantalla ancha los botones vuelven a su tamaño natural, alineados
