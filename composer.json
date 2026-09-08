@@ -1,0 +1,23 @@
+{
+    "name": "istpet/asistencia-qr",
+    "description": "Sistema de control de asistencia con codigos QR - Instituto Superior Tecnologico Mayor Pedro Traversari",
+    "type": "project",
+    "license": "proprietary",
+    "require": {
+        "php": ">=8.1",
+        "ext-pdo": "*",
+        "ext-pdo_mysql": "*",
+        "ext-mbstring": "*",
+        "ext-json": "*",
+        "ext-gd": "*",
+        "ext-openssl": "*"
+    },
+    "config": {
+        "platform": {
+            "php": "8.2.12"
+        }
+    },
+    "scripts": {
+        "start": "php -S 0.0.0.0:${PORT:-8080} -t public public/index.php"
+    }
+}

@@ -1,0 +1,23 @@
+.vscode/
+.idea/
+.qodo/
+*.log
+.DS_Store
+Thumbs.db
+
+# Registros de errores del sistema
+storage/logs/*
+!storage/logs/.gitignore
+
+# Credenciales y configuracion local: NUNCA deben salir del equipo
+CREDENCIALES.md
+.env
+config/config.local.php
+
+# Respaldos de la base de datos: contienen datos reales de personas
+database/respaldos/*
+!database/respaldos/.gitkeep
+
+# Archivos subidos por los usuarios (listas de matricula)
+storage/uploads/*
+!storage/uploads/.gitkeep
