@@ -48,6 +48,10 @@ uksort($porSemestre, static function ($a, $b) use ($ordenSemestres) {
 });
 
 $carrerasActivas = array_values(array_filter($carreras, static fn($c) => (int)$c['activa'] === 1));
+
+// Solo se ofrecen los periodos abiertos: uno cerrado esta para consultar, y
+// cargarle materias nuevas seria volver a abrirlo por la puerta de atras.
+$periodosAbiertos = array_values(array_filter($periodos, static fn($p) => (int)$p['activo'] === 1));
 ?>
 
 <nav class="breadcrumb">
@@ -158,6 +162,10 @@ $carrerasActivas = array_values(array_filter($carreras, static fn($c) => (int)$c
                                         "nombre"  => $m["nombre"],
                                         "semestre"=> $m["semestre"],
                                         "carrera" => (int)($m["carrera_id"] ?? 0),
+                                        "periodo" => (int)($m["periodo_id"] ?? 0),
+                                        // Solo se puede mover de ciclo mientras no
+                                        // arrastre asignaciones ni clases dictadas
+                                        "movible" => empty($m["cursos"]) && empty($m["archivados"]),
                                         "activa"  => (int)$m["activa"]
                                     ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>)'>
                                 Editar
@@ -288,11 +296,6 @@ $carrerasActivas = array_values(array_filter($carreras, static fn($c) => (int)$c
             <button type="button" class="modal-close-btn" onclick="cerrarModal('modalMateria')" aria-label="Cerrar">&times;</button>
         </div>
 
-        <p class="text-muted mb-4" style="font-size:.87rem">
-            Se creará en el período
-            <strong class="text-primary"><?= htmlspecialchars($periodo['nombre'] ?? '—') ?></strong>.
-        </p>
-
         <form action="<?= $base ?>/admin/materias/crear" method="POST" id="formMateria">
             <input type="hidden" name="csrf_token" value="<?= $tok ?>">
             <input type="hidden" name="id" id="materiaId">
@@ -335,6 +338,34 @@ $carrerasActivas = array_values(array_filter($carreras, static fn($c) => (int)$c
                         </small>
                     <?php endif; ?>
                 </div>
+            </div>
+
+            <div class="form-group">
+                <label for="materiaPeriodo" class="form-label">Período académico <span class="text-danger">*</span></label>
+                <select id="materiaPeriodo" name="periodo_id" class="form-select" required>
+                    <?php foreach ($periodosAbiertos as $p): ?>
+                        <option value="<?= (int)$p['id'] ?>"
+                                <?= (int)$p['id'] === (int)($periodo['id'] ?? 0) ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($p['nombre']) ?>
+                            (<?= date('d/m/Y', strtotime($p['fecha_inicio'])) ?>
+                            al <?= date('d/m/Y', strtotime($p['fecha_fin'])) ?>)
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <small class="form-ayuda" id="ayudaPeriodo">
+                    Viene marcado el período en el que estás trabajando. Si eliges otro,
+                    la pantalla se moverá a ese período para que veas la materia recién creada.
+                </small>
+                <small class="form-ayuda" id="avisoPeriodoFijo" hidden>
+                    Esta materia ya tiene docente asignado, así que no puede cambiar de
+                    período: se llevaría consigo las clases ya dictadas. Para el ciclo
+                    siguiente, copia la malla desde la pantalla de períodos.
+                </small>
+                <?php if (empty($periodosAbiertos)): ?>
+                    <small class="form-ayuda text-danger">
+                        No hay ningún período abierto. Abre uno en la pantalla de períodos.
+                    </small>
+                <?php endif; ?>
             </div>
 
             <div class="form-group">
@@ -492,6 +523,7 @@ document.addEventListener('keydown', e => {
 });
 
 const BASE = document.body.dataset.base || '';
+const PERIODO_ACTUAL = '<?= (int)($periodo['id'] ?? 0) ?>';
 
 /** Propone el código corto mientras se escribe el nombre, sin pisar lo que el admin escriba */
 function proponerCodigo() {
@@ -521,6 +553,10 @@ function nuevaMateria() {
     f.reset();
     document.getElementById('materiaId').value = '';
     document.getElementById('materiaCodigo').dataset.tocado = '';
+    document.getElementById('materiaPeriodo').value = PERIODO_ACTUAL;
+    document.getElementById('materiaPeriodo').disabled = false;
+    document.getElementById('ayudaPeriodo').hidden = false;
+    document.getElementById('avisoPeriodoFijo').hidden = true;
     document.getElementById('tituloModalMateria').textContent = 'Nueva Materia';
     document.getElementById('botonMateria').textContent = 'Crear Materia';
     document.getElementById('grupoEstadoMateria').hidden = true;
@@ -545,6 +581,22 @@ function editarMateria(m) {
     document.getElementById('materiaCodigo').value = m.codigo;
     document.getElementById('materiaCodigo').dataset.tocado = '1';
     document.getElementById('materiaActiva').value = m.activa ? '1' : '0';
+
+    /*
+     * El período solo se puede cambiar mientras la materia esté vacía.
+     *
+     * En cuanto tiene un docente asignado, arrastra consigo las clases ya
+     * dictadas y sus asistencias: moverla de ciclo descuadraría los dos a la
+     * vez, el que deja y el que recibe. Para el ciclo siguiente se copia la
+     * malla desde la pantalla de períodos, que crea materias nuevas y deja el
+     * historial anterior donde está.
+     */
+    const campoPeriodo = document.getElementById('materiaPeriodo');
+    campoPeriodo.value = m.periodo;
+    campoPeriodo.disabled = !m.movible;
+    document.getElementById('ayudaPeriodo').hidden = !m.movible;
+    document.getElementById('avisoPeriodoFijo').hidden = m.movible;
+
     document.getElementById('tituloModalMateria').textContent = 'Editar Materia';
     document.getElementById('botonMateria').textContent = 'Guardar Cambios';
     document.getElementById('grupoEstadoMateria').hidden = false;

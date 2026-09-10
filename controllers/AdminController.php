@@ -702,14 +702,24 @@ class AdminController extends BaseController
         $semestre  = trim($_POST['semestre'] ?? '');
         $carreraId = filter_var($_POST['carrera_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
 
-        // El periodo no se elige en el formulario: es aquel con el que el
-        // administrador esta trabajando. Pedirlo dos veces solo abriria la
-        // puerta a crear la materia en un ciclo distinto del que se ve en
-        // pantalla, que es un error dificil de notar despues.
-        $periodo = $this->periodoActual();
+        // El periodo viene del formulario, con el de trabajo ya marcado. Se
+        // puede elegir otro: cargar de una vez la malla del ciclo siguiente es
+        // una necesidad real, y obligar a cambiar de periodo, crear la materia
+        // y volver era dar tres vueltas para lo mismo.
+        $periodoId = filter_var($_POST['periodo_id'] ?? null, FILTER_VALIDATE_INT);
+        $periodo   = Periodo::buscarPorId($periodoId) ?? $this->periodoActual();
 
         if ($periodo === null) {
             $this->redirigirConError('Primero elige un periodo académico.', '/admin/periodo');
+        }
+
+        // Un periodo cerrado esta para consultar: cargarle materias nuevas
+        // seria volver a abrirlo por la puerta de atras
+        if ((int)$periodo['activo'] === 0) {
+            $this->redirigirConError(
+                'El periodo ' . $periodo['nombre'] . ' está cerrado. Reábrelo si necesitas cargarle materias.',
+                '/admin/materias'
+            );
         }
 
         [$nombre, $codigo] = $this->validarDatosMateria($nombre, $codigo, $semestre, $carreraId);
@@ -718,7 +728,8 @@ class AdminController extends BaseController
 
         if ($resultado === 'duplicada') {
             $this->redirigirConError(
-                "Ya existe \"{$nombre}\" en {$semestre} para este periodo, o el código \"{$codigo}\" ya está en uso.",
+                "Ya existe \"{$nombre}\" en {$semestre} dentro de {$periodo['nombre']}, "
+                . "o el código \"{$codigo}\" ya está en uso en ese periodo.",
                 '/admin/materias'
             );
         }
@@ -726,10 +737,21 @@ class AdminController extends BaseController
             $this->redirigirConError('No se pudo crear la materia.', '/admin/materias');
         }
 
-        $this->redirigirConMensaje(
-            "Materia \"{$nombre}\" creada en {$semestre}. Ahora asígnale un docente.",
-            '/admin/materias'
-        );
+        // Si la creo en otro periodo, la pantalla se mueve alli. Sin esto la
+        // materia recien creada no apareceria en la lista —que esta filtrada
+        // por el periodo de trabajo— y pareceria que no se guardo.
+        $aviso = "Materia \"{$nombre}\" creada en {$semestre}, periodo {$periodo['nombre']}.";
+
+        if ((int)$periodo['id'] !== $this->idPeriodoActual()) {
+            self::abrirSesion();
+            $_SESSION['periodo_id']     = (int)$periodo['id'];
+            $_SESSION['periodo_nombre'] = $periodo['nombre'];
+            $aviso .= ' Se cambió tu periodo de trabajo a ' . $periodo['nombre'] . ' para que la veas.';
+        } else {
+            $aviso .= ' Ahora asígnale un docente.';
+        }
+
+        $this->redirigirConMensaje($aviso, '/admin/materias');
     }
 
     public function actualizarMateria(): void
@@ -752,11 +774,43 @@ class AdminController extends BaseController
 
         [$nombre, $codigo] = $this->validarDatosMateria($nombre, $codigo, $semestre, $carreraId);
 
-        // El periodo de una materia no se cambia desde aqui: mover una materia
-        // de ciclo se llevaria consigo las clases ya dictadas y descuadraria
-        // los dos periodos a la vez. Para el ciclo siguiente se copia la malla.
+        /*
+         * El periodo solo se puede cambiar mientras la materia este VACIA.
+         *
+         * En cuanto tiene un docente asignado arrastra consigo las clases ya
+         * dictadas y sus asistencias: moverla de ciclo descuadraria los dos a
+         * la vez, el que deja y el que recibe. Para el ciclo siguiente se
+         * copia la malla, que crea materias nuevas y deja el historial donde
+         * esta.
+         *
+         * La comprobacion se repite aqui aunque el formulario ya deshabilite
+         * el campo: un campo deshabilitado se vuelve a habilitar desde el
+         * navegador en dos clics, asi que no puede ser la unica defensa.
+         */
+        $periodoFinal = (int)$materia['periodo_id'];
+        $periodoPedido = filter_var($_POST['periodo_id'] ?? null, FILTER_VALIDATE_INT);
+
+        if ($periodoPedido && $periodoPedido !== $periodoFinal) {
+            if (Curso::tieneAlguno($id)) {
+                $this->redirigirConError(
+                    '"' . $materia['nombre'] . '" ya tiene docente asignado, así que no puede '
+                    . 'cambiar de periodo: se llevaría consigo las clases ya dictadas. '
+                    . 'Para el ciclo siguiente, copia la malla desde la pantalla de periodos.',
+                    '/admin/materias'
+                );
+            }
+
+            $destino = Periodo::buscarPorId($periodoPedido);
+
+            if ($destino === null || (int)$destino['activo'] === 0) {
+                $this->redirigirConError('Selecciona un periodo académico abierto.', '/admin/materias');
+            }
+
+            $periodoFinal = (int)$destino['id'];
+        }
+
         $resultado = Materia::actualizar(
-            $id, $codigo, $nombre, $semestre, $carreraId, (int)$materia['periodo_id'], $activa
+            $id, $codigo, $nombre, $semestre, $carreraId, $periodoFinal, $activa
         );
 
         if ($resultado === 'duplicada') {

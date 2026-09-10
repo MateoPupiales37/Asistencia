@@ -115,6 +115,21 @@ class Curso
      * materias del mismo nombre en semestres distintos son dos filas
      * diferentes y cada una puede tener su propio docente.
      */
+    /**
+     * ¿La materia tiene alguna asignacion, activa o retirada?
+     *
+     * Se pregunta antes de mover una materia de periodo: si ya tuvo docente,
+     * cuelgan de ella las clases dictadas y sus asistencias, y llevarsela al
+     * ciclo siguiente descuadraria los dos a la vez.
+     */
+    public static function tieneAlguno(int $materiaId): bool
+    {
+        $db = Database::conectar();
+        $stmt = $db->prepare("SELECT id FROM cursos WHERE materia_id = ? LIMIT 1");
+        $stmt->execute([$materiaId]);
+        return (bool)$stmt->fetch();
+    }
+
     public static function docenteDeMateria(int $materiaId): ?array
     {
         $db = Database::conectar();
