@@ -9,6 +9,7 @@ require_once dirname(__DIR__) . '/models/Asistencia.php';
 require_once dirname(__DIR__) . '/models/Catalogo.php';
 require_once dirname(__DIR__) . '/models/Sesion.php';
 require_once dirname(__DIR__) . '/models/Matricula.php';
+require_once dirname(__DIR__) . '/models/Justificacion.php';
 require_once dirname(__DIR__) . '/config/app.php';
 
 /**
@@ -90,6 +91,10 @@ class ReporteController extends BaseController
             'resumen'       => Asistencia::resumenSesion((int)$sesion['id']),
             // Cuantos deberian haber asistido: los matriculados en el curso
             'matriculados'  => Matricula::contarPorCurso((int)$sesion['curso_id']),
+            // Quien falto, y si el docente le registro una justificacion.
+            // Sin esta lista el detalle solo contaba a los presentes, y una
+            // falta justificada era indistinguible de una sin justificar.
+            'ausentes'      => Matricula::ausentesDeSesion((int)$sesion['id']),
             'mensaje'       => $mensaje,
             'error'         => $error,
             'csrf'          => self::tokenCsrf()
@@ -231,27 +236,46 @@ class ReporteController extends BaseController
             $pdf->Cell(273, 14, $pdf->conv('No se encontraron registros con los filtros seleccionados.'), 1, 1, 'C');
         } else {
             $pdf->SetFont('Helvetica', '', 8);
+
+            // Alineacion de cada columna. Los datos cortos y comparables van
+            // centrados; los que se leen como texto, a la izquierda.
+            $alineaciones = [
+                'fecha' => 'C', 'codigo' => 'C', 'cedula' => 'C',
+                'estudiante' => 'L', 'materia' => 'L', 'ambiente' => 'L',
+                'entrada' => 'C', 'salida' => 'C', 'estado' => 'C', 'motivo' => 'L'
+            ];
+
             $alterno = false;
 
             foreach ($datos as $a) {
-                $pdf->SetFillColor(...($alterno ? [248, 250, 252] : [255, 255, 255]));
-                $pdf->SetTextColor(30, 41, 59);
-                $pdf->SetDrawColor(226, 232, 240);
+                // El motivo lleva su descripcion pegada: es donde el docente
+                // escribio lo que de verdad paso, y en el reporte impreso no
+                // hay ningun sitio donde ir a consultarla
+                $motivo = Catalogo::etiquetaMotivo($a['motivo']);
+                if (!empty($a['motivo_detalle'])) {
+                    $motivo = ($motivo !== '' ? $motivo . ': ' : '') . $a['motivo_detalle'];
+                }
 
-                $pdf->Cell(22, 6.5, $a['fecha'], 1, 0, 'C', true);
-                $pdf->Cell(18, 6.5, $a['codigo'], 1, 0, 'C', true);
-                $pdf->Cell(24, 6.5, (string)($a['cedula'] ?? '-'), 1, 0, 'C', true);
-                $pdf->celdaAjustada(48, 6.5, trim($a['nombre'] . ' ' . $a['apellido']), 1, 0, 'L', true);
-                $pdf->celdaAjustada(44, 6.5, $a['materia'], 1, 0, 'L', true);
-                $pdf->celdaAjustada(30, 6.5, $a['ambiente'], 1, 0, 'L', true);
-                $pdf->Cell(18, 6.5, $a['hora_entrada'] ? date('H:i', strtotime($a['hora_entrada'])) : '-', 1, 0, 'C', true);
-                $pdf->Cell(18, 6.5, $a['hora_salida'] ? date('H:i', strtotime($a['hora_salida'])) : '-', 1, 0, 'C', true);
-                $pdf->celdaAjustada(26, 6.5, Catalogo::etiquetaEstado($a['estado']), 1, 0, 'C', true);
-                $pdf->celdaAjustada(25, 6.5, Catalogo::etiquetaMotivo($a['motivo']), 1, 1, 'L', true);
+                $pdf->filaAjustada([
+                    'fecha'      => $a['fecha'],
+                    'codigo'     => $a['codigo'],
+                    'cedula'     => (string)($a['cedula'] ?? '-'),
+                    'estudiante' => trim($a['nombre'] . ' ' . $a['apellido']),
+                    'materia'    => $a['materia'],
+                    'ambiente'   => $a['ambiente'],
+                    'entrada'    => $a['hora_entrada'] ? date('H:i', strtotime($a['hora_entrada'])) : '-',
+                    'salida'     => $a['hora_salida'] ? date('H:i', strtotime($a['hora_salida'])) : '-',
+                    'estado'     => Catalogo::etiquetaEstado($a['estado']),
+                    'motivo'     => $motivo
+                ], $alineaciones, $alterno);
 
                 $alterno = !$alterno;
             }
         }
+
+        // Quien responde por el documento. Sin esto el reporte no sirve como
+        // respaldo ante Secretaria ni Coordinacion.
+        $pdf->bloqueFirmas($titular, count($datos));
 
         $this->limpiarBuffer();
         $pdf->Output('D', 'asistencias_' . date('Ymd_His') . '.pdf');

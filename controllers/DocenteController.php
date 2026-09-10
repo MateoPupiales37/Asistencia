@@ -329,7 +329,7 @@ class DocenteController extends BaseController
             $cedula = Catalogo::normalizarCedula($_POST['cedula'] ?? '');
 
             if (!Catalogo::esCedulaValida($cedula)) {
-                $this->redirigirConError('El número de cédula no es válido. Revisa los 10 dígitos.', '/docente');
+                $this->redirigirConError(Catalogo::porQueCedulaInvalida($cedula), '/docente');
             }
 
             $estudiante = Estudiante::buscarPorCedula($cedula);
@@ -359,7 +359,7 @@ class DocenteController extends BaseController
             // La cedula es opcional aqui, pero si se escribe tiene que ser real:
             // una cedula inventada arruinaria la identificacion futura del alumno
             if ($cedula !== '' && !Catalogo::esCedulaValida($cedula)) {
-                $this->redirigirConError('El número de cédula no es válido. Revisa los 10 dígitos.', '/docente');
+                $this->redirigirConError(Catalogo::porQueCedulaInvalida($cedula), '/docente');
             }
 
             // Si esa cedula ya existe, ese ES el alumno: no se crea un duplicado
@@ -664,7 +664,7 @@ class DocenteController extends BaseController
         // La cedula es obligatoria aqui: es lo que despues le permite al alumno
         // registrarse solo aunque pierda el carnet u olvide su codigo
         if (!Catalogo::esCedulaValida($cedula)) {
-            $this->redirigirConError('La cédula no es válida. Revisa los 10 dígitos.', $ruta);
+            $this->redirigirConError(Catalogo::porQueCedulaInvalida($cedula), $ruta);
         }
 
         // El telefono tambien es obligatorio: sin numero no hay forma de
@@ -749,7 +749,7 @@ class DocenteController extends BaseController
             $this->redirigirConError('Selecciona un semestre válido.', $ruta);
         }
         if (!Catalogo::esCedulaValida($cedula)) {
-            $this->redirigirConError('La cédula no es válida. Revisa los 10 dígitos.', $ruta);
+            $this->redirigirConError(Catalogo::porQueCedulaInvalida($cedula), $ruta);
         }
         if (Estudiante::normalizarTelefono($telefono) === null) {
             $this->redirigirConError(
@@ -872,7 +872,8 @@ class DocenteController extends BaseController
             }
 
             if (!Catalogo::esCedulaValida($cedula)) {
-                $problemas[] = "Fila {$numero}: la cédula \"" . ($fila[0] ?? '') . "\" no es válida.";
+                $problemas[] = "Fila {$numero}: cédula \"" . ($fila[0] ?? '') . "\". "
+                             . Catalogo::porQueCedulaInvalida($cedula);
                 continue;
             }
             if (!preg_match(self::PATRON_NOMBRE, $nombre)) {
@@ -1117,10 +1118,7 @@ class DocenteController extends BaseController
         }
 
         if (!Catalogo::esCedulaValida($cedula)) {
-            $this->redirigirConError(
-                'El número de cédula no es válido. Deben ser 10 dígitos y el último es el verificador.',
-                '/docente/carnets'
-            );
+            $this->redirigirConError(Catalogo::porQueCedulaInvalida($cedula), '/docente/carnets');
         }
 
         if (!Estudiante::asignarCedula($estudianteId, $cedula)) {

@@ -15,9 +15,15 @@ $abierta  = ($sesion['estado'] === 'abierta');
 $presentes = (int)$resumen['presentes'];
 $total     = (int)$resumen['total'];
 
-// Cuantos matriculados no aparecieron. Solo tiene sentido si el curso tiene
-// alumnos matriculados; si no, no hay contra que comparar.
-$ausentes = max(0, (int)$matriculados - $total);
+/*
+ * Cuantos matriculados no aparecieron.
+ *
+ * Se cuenta la lista real de ausentes y NO se resta "matriculados menos
+ * registros", como se hacia antes: esa resta daba de menos en cuanto alguien
+ * no matriculado se registraba con el QR, porque ese registro inflaba el total
+ * y hacia desaparecer una falta que si existia.
+ */
+$totalAusentes = count($ausentes);
 
 $duracion = '';
 if (!empty($sesion['hora_fin'])) {
@@ -137,7 +143,7 @@ if (!empty($sesion['hora_fin'])) {
     <?php if ((int)$matriculados > 0): ?>
         <div class="stat-card">
             <span class="stat-label">No asistieron</span>
-            <span class="stat-value"><?= $ausentes ?></span>
+            <span class="stat-value"><?= $totalAusentes ?></span>
             <span class="stat-pie">matriculados que faltaron</span>
         </div>
     <?php endif; ?>
@@ -212,6 +218,82 @@ if (!empty($sesion['hora_fin'])) {
             </tbody>
         </table>
     </div>
+</div>
+
+<!-- ==================== QUIÉN FALTÓ ====================
+     El detalle contaba solo a los presentes. Con esta tabla se puede
+     responder la pregunta que de verdad se hace al revisar una clase:
+     quién no vino y si tenía justificación.
+     ==================================================== -->
+<div class="card mb-6">
+    <div class="card-header-flex">
+        <div>
+            <h3 class="card-titulo mb-0">Faltas</h3>
+            <p class="text-muted" style="font-size:.85rem">
+                Matriculados en el curso que no registraron asistencia en esta clase
+            </p>
+        </div>
+        <span class="badge <?= empty($ausentes) ? 'badge-success' : 'badge-neutral' ?>">
+            <?= $totalAusentes ?> falta(s)
+        </span>
+    </div>
+
+    <?php if (empty($ausentes)): ?>
+        <p class="text-muted" style="font-size:.87rem">
+            Asistencia completa: todos los matriculados registraron su entrada.
+        </p>
+    <?php else: ?>
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Estudiante</th>
+                        <th>Cédula</th>
+                        <th>Justificación</th>
+                        <th>Respaldo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($ausentes as $f): ?>
+                        <?php $justificada = !empty($f['justificacion_id']); ?>
+                        <tr class="<?= $justificada ? 'fila-justificada' : '' ?>">
+                            <td>
+                                <span class="font-medium"><?= htmlspecialchars(trim($f['nombre'] . ' ' . $f['apellido'])) ?></span>
+                                <div class="celda-sub">
+                                    <?= htmlspecialchars($f['codigo']) ?> &bull; <?= htmlspecialchars($f['semestre']) ?>
+                                </div>
+                            </td>
+                            <td class="table-code">
+                                <?= !empty($f['cedula']) ? htmlspecialchars($f['cedula']) : '<span class="text-light">&mdash;</span>' ?>
+                            </td>
+                            <td>
+                                <?php if (!$justificada): ?>
+                                    <span class="badge badge-danger">Sin justificar</span>
+                                <?php else: ?>
+                                    <span class="badge badge-success">
+                                        <?= htmlspecialchars(Justificacion::etiquetaTipo($f['justificacion_tipo'])) ?>
+                                    </span>
+                                    <?php if (!empty($f['justificacion_detalle'])): ?>
+                                        <div class="motivo-linea"><?= htmlspecialchars($f['justificacion_detalle']) ?></div>
+                                    <?php endif; ?>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if ($justificada && !empty($f['justificacion_archivo'])): ?>
+                                    <a href="<?= $base ?>/docente/justificante?id=<?= (int)$f['justificacion_id'] ?>"
+                                       target="_blank" rel="noopener" class="enlace-respaldo">
+                                        <?= htmlspecialchars($f['justificacion_archivo_nombre'] ?: 'Ver documento') ?>
+                                    </a>
+                                <?php else: ?>
+                                    <span class="text-light">&mdash;</span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
 </div>
 
 <?php require dirname(__DIR__) . '/layouts/footer.php'; ?>

@@ -364,6 +364,152 @@ $tok = htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8');
             </table>
         </div>
     </div>
+
+    <!-- ---------- FALTAS: QUIEN NO VINO Y SI ESTA JUSTIFICADO ---------- -->
+    <!--
+        Hasta ahora el sistema solo sabia decir quien vino. A quien falto habia
+        que buscarlo comparando a mano la lista del curso con la de asistentes,
+        y la justificacion se quedaba en un papel dentro de una carpeta. Aqui
+        estan los dos datos juntos: quien falta y con que respaldo.
+    -->
+    <div class="card mb-6" data-region="faltas">
+        <div class="card-header-flex">
+            <div>
+                <h3 class="card-titulo mb-0">Faltas de esta clase</h3>
+                <p class="text-muted" style="font-size:.85rem">
+                    Matriculados que todavía no han marcado asistencia
+                </p>
+            </div>
+            <span class="badge <?= empty($ausentes) ? 'badge-success' : 'badge-neutral' ?>">
+                <?= count($ausentes) ?> sin marcar
+            </span>
+        </div>
+
+        <?php if (empty($ausentes)): ?>
+            <p class="text-muted" style="font-size:.87rem">
+                No falta nadie: todos los matriculados registraron su asistencia.
+            </p>
+        <?php else: ?>
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Estudiante</th>
+                            <th>Código</th>
+                            <th>Justificación</th>
+                            <th class="text-right">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($ausentes as $f): ?>
+                            <?php $justificada = !empty($f['justificacion_id']); ?>
+                            <tr class="<?= $justificada ? 'fila-justificada' : '' ?>">
+                                <td class="font-medium">
+                                    <?= htmlspecialchars(trim($f['nombre'] . ' ' . $f['apellido'])) ?>
+                                    <div class="text-muted" style="font-size:.76rem"><?= htmlspecialchars($f['semestre']) ?></div>
+                                </td>
+                                <td class="table-code"><?= htmlspecialchars($f['codigo']) ?></td>
+                                <td>
+                                    <?php if (!$justificada): ?>
+                                        <span class="badge badge-danger">Falta sin justificar</span>
+                                    <?php else: ?>
+                                        <span class="badge badge-success">
+                                            <?= htmlspecialchars(Justificacion::etiquetaTipo($f['justificacion_tipo'])) ?>
+                                        </span>
+                                        <?php if (!empty($f['justificacion_detalle'])): ?>
+                                            <div class="motivo-linea"><?= htmlspecialchars($f['justificacion_detalle']) ?></div>
+                                        <?php endif; ?>
+                                        <?php if (!empty($f['justificacion_archivo'])): ?>
+                                            <div>
+                                                <a href="<?= $base ?>/docente/justificante?id=<?= (int)$f['justificacion_id'] ?>"
+                                                   target="_blank" rel="noopener" class="enlace-respaldo">
+                                                    Ver respaldo adjunto
+                                                </a>
+                                            </div>
+                                        <?php else: ?>
+                                            <div class="text-muted" style="font-size:.76rem">Sin respaldo adjunto</div>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="text-right">
+                                    <div class="acciones-fila">
+                                        <button type="button" class="btn btn-sm <?= $justificada ? 'btn-outline' : 'btn-dorado' ?>"
+                                                onclick='justificar(<?= json_encode([
+                                                    "id"     => (int)$f["id"],
+                                                    "nombre" => trim($f["nombre"] . " " . $f["apellido"]),
+                                                    "tipo"   => $f["justificacion_tipo"] ?? "",
+                                                    "detalle"=> $f["justificacion_detalle"] ?? ""
+                                                ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>)'>
+                                            <?= $justificada ? 'Corregir' : 'Justificar' ?>
+                                        </button>
+
+                                        <?php if ($justificada): ?>
+                                            <form action="<?= $base ?>/docente/justificar/quitar" method="POST" class="inline"
+                                                  data-confirmar="¿Retirar la justificación? La falta volverá a contar como no justificada y se borrará el archivo adjunto.">
+                                                <input type="hidden" name="csrf_token" value="<?= $tok ?>">
+                                                <input type="hidden" name="id" value="<?= (int)$f['justificacion_id'] ?>">
+                                                <button type="submit" class="btn btn-sm btn-peligro-suave">Retirar</button>
+                                            </form>
+                                        <?php endif; ?>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <!-- ---------- BLOQUEADOS TRAS SER RETIRADOS DE LA CLASE ---------- -->
+    <?php if (!empty($bloqueados)): ?>
+        <div class="card mb-6" data-region="bloqueados">
+            <div class="card-header-flex">
+                <div>
+                    <h3 class="card-titulo mb-0">Bloqueados temporalmente</h3>
+                    <p class="text-muted" style="font-size:.85rem">
+                        A quien retiras de la clase no puede volver a registrarse en ella
+                        durante <?= Expulsion::HORAS_BLOQUEO ?> horas
+                    </p>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Estudiante</th>
+                            <th>Código</th>
+                            <th>Puede volver a intentarlo</th>
+                            <th class="text-right">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($bloqueados as $b): ?>
+                            <tr>
+                                <td class="font-medium"><?= htmlspecialchars(trim($b['nombre'] . ' ' . $b['apellido'])) ?></td>
+                                <td class="table-code"><?= htmlspecialchars($b['codigo']) ?></td>
+                                <td class="text-muted">
+                                    <?= date('H:i', strtotime($b['bloqueado_hasta'])) ?>
+                                    <span style="font-size:.78rem">
+                                        (en <?= max(1, (int)$b['minutos_restantes']) ?> min)
+                                    </span>
+                                </td>
+                                <td class="text-right">
+                                    <form action="<?= $base ?>/docente/asistencia/desbloquear" method="POST" class="inline"
+                                          data-confirmar="¿Levantar el bloqueo? El estudiante podrá volver a registrarse en esta clase.">
+                                        <input type="hidden" name="csrf_token" value="<?= $tok ?>">
+                                        <input type="hidden" name="estudiante_id" value="<?= (int)$b['estudiante_id'] ?>">
+                                        <button type="submit" class="btn btn-sm btn-outline">Levantar bloqueo</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    <?php endif; ?>
 <?php endif; ?>
 
 <!-- ============================================================
@@ -676,9 +822,77 @@ $tok = htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8');
                 <small class="form-ayuda">Opcional, salvo que elijas "Otro". Máximo 200 caracteres.</small>
             </div>
 
+            <!--
+                El motivo decide si la salida queda justificada o no, y eso es
+                lo que se cuenta distinto al cerrar el periodo. Se avisa aqui
+                para que el docente lo sepa ANTES de guardar, no despues.
+            -->
+            <div class="alert alert-info mb-4" id="avisoJustificada" hidden>
+                <span id="avisoJustificadaTexto"></span>
+            </div>
+
             <div class="modal-actions">
                 <button type="button" class="btn btn-outline" onclick="cerrarModal('modalSalida')">Cancelar</button>
                 <button type="submit" class="btn btn-danger">Registrar Salida</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ================== MODAL: justificar una falta ================== -->
+<!--
+    Este formulario NO pasa por la capa AJAX: lleva un archivo adjunto y la
+    capa envia los datos como texto. Por eso el data-subida, que es la marca
+    que el JavaScript reconoce para dejarlo pasar como envio normal.
+-->
+<div id="modalJustificar" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header-row">
+            <h3 class="modal-title mb-0">Justificar falta</h3>
+            <button type="button" class="modal-close-btn" onclick="cerrarModal('modalJustificar')">&times;</button>
+        </div>
+
+        <p class="text-muted mb-4" style="font-size:.86rem">
+            Estudiante: <strong id="justificarNombre" class="text-primary"></strong>
+        </p>
+
+        <form action="<?= $base ?>/docente/justificar" method="POST"
+              enctype="multipart/form-data" data-subida id="formJustificar">
+            <input type="hidden" name="csrf_token" value="<?= $tok ?>">
+            <input type="hidden" name="sesion_id" value="<?= (int)$sesionActiva['id'] ?>">
+            <input type="hidden" name="estudiante_id" id="justificarEstudianteId">
+
+            <div class="form-group">
+                <label for="justificarTipo" class="form-label">Tipo de justificación <span class="text-danger">*</span></label>
+                <select id="justificarTipo" name="tipo" class="form-select" required>
+                    <option value="">-- Selecciona --</option>
+                    <?php foreach ($tiposJustificacion as $valor => $etiqueta): ?>
+                        <option value="<?= htmlspecialchars($valor, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($etiqueta) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="justificarDetalle" class="form-label">Descripción</label>
+                <textarea id="justificarDetalle" name="detalle" class="form-control" rows="2" maxlength="300"
+                          placeholder="Ej: Control médico en el subcentro, con certificado"></textarea>
+                <small class="form-ayuda">Opcional. Máximo 300 caracteres.</small>
+            </div>
+
+            <div class="form-group mb-6">
+                <label for="justificante" class="form-label">Respaldo (PDF o imagen)</label>
+                <input type="file" id="justificante" name="justificante" class="form-control"
+                       accept="application/pdf,image/jpeg,image/png,image/webp,image/heic">
+                <small class="form-ayuda">
+                    Opcional: el certificado médico, el permiso firmado o una foto del documento.
+                    Máximo <?= round($maxJustificante / 1048576) ?> MB. Solo pueden verlo tú y el
+                    administrador; no queda accesible desde internet.
+                </small>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline" onclick="cerrarModal('modalJustificar')">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar justificación</button>
             </div>
         </form>
     </div>
@@ -817,13 +1031,77 @@ function abrirSalida(id, nombre) {
     abrirModal('modalSalida');
 }
 
+/*
+ * Motivos que dejan la salida JUSTIFICADA. Es la misma lista que
+ * Catalogo::MOTIVOS_JUSTIFICADOS en el servidor, y viene de alli para que no
+ * puedan separarse: si manana se agrega un motivo, se agrega en un solo sitio.
+ */
+const MOTIVOS_JUSTIFICADOS = <?= json_encode(Catalogo::MOTIVOS_JUSTIFICADOS, JSON_UNESCAPED_UNICODE) ?>;
+
 // El motivo "Otro" obliga a describir: si no, se perderia la razon real de la salida
 function revisarDetalle() {
     const motivo = document.getElementById('motivo');
     if (!motivo) return;
+
     const esOtro = motivo.value === 'Otro';
     document.getElementById('detalleObligatorio').hidden = !esOtro;
     document.getElementById('motivo_detalle').required = esOtro;
+
+    // Se adelanta el efecto del motivo: el docente ve si la salida quedara
+    // justificada ANTES de guardarla, no despues de leer el mensaje
+    const aviso = document.getElementById('avisoJustificada');
+    const texto = document.getElementById('avisoJustificadaTexto');
+    if (!aviso || !texto) return;
+
+    if (!motivo.value) {
+        aviso.hidden = true;
+        return;
+    }
+
+    const justificada = MOTIVOS_JUSTIFICADOS.includes(motivo.value);
+    aviso.hidden = false;
+    aviso.className = 'alert mb-4 ' + (justificada ? 'alert-success' : 'alert-warning');
+    texto.textContent = justificada
+        ? 'Con este motivo la salida queda registrada como JUSTIFICADA.'
+        : 'Con este motivo la salida queda como NO justificada.';
+}
+
+/** Abre el formulario para justificar la falta de un alumno */
+function justificar(alumno) {
+    document.getElementById('justificarEstudianteId').value = alumno.id;
+    document.getElementById('justificarNombre').textContent = alumno.nombre;
+    document.getElementById('justificarTipo').value = alumno.tipo || '';
+    document.getElementById('justificarDetalle').value = alumno.detalle || '';
+
+    // El archivo no se puede rellenar por seguridad del navegador: si ya habia
+    // uno adjunto y el docente no elige otro, el servidor conserva el anterior
+    const archivo = document.getElementById('justificante');
+    if (archivo) archivo.value = '';
+
+    abrirModal('modalJustificar');
+    document.getElementById('justificarTipo').focus();
+}
+
+const MAX_JUSTIFICANTE = <?= (int)$maxJustificante ?>;
+
+const formJustificar = document.getElementById('formJustificar');
+if (formJustificar) {
+    formJustificar.addEventListener('submit', e => {
+        if (!document.getElementById('justificarTipo').value) {
+            e.preventDefault();
+            alert('Selecciona el tipo de justificación.');
+            return;
+        }
+
+        // Se avisa antes de subir: esperar a que viaje un archivo de 20 MB
+        // para entonces decir que no cabe es la peor forma de descubrirlo
+        const archivo = document.getElementById('justificante');
+        if (archivo && archivo.files.length && archivo.files[0].size > MAX_JUSTIFICANTE) {
+            e.preventDefault();
+            alert('El archivo pesa más de ' + Math.round(MAX_JUSTIFICANTE / 1048576)
+                + ' MB. Si es una foto, vuelve a tomarla con menos calidad.');
+        }
+    });
 }
 
 const formSalida = document.getElementById('formSalida');

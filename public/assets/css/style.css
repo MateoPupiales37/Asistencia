@@ -4441,6 +4441,21 @@ body.portada-body .footer {
     margin-top: 8px;
 }
 
+/* Fila de una falta que ya tiene justificacion registrada */
+.fila-justificada {
+    background: rgba(22, 163, 74, .04);
+}
+
+.enlace-respaldo {
+    font-size: .78rem;
+    color: var(--color-primary);
+    text-decoration: underline;
+}
+
+.enlace-respaldo:hover {
+    color: var(--color-primary-dark, #1b3a80);
+}
+
 /* Distintivo del periodo en la barra de navegacion del administrador */
 .nav-periodo {
     display: inline-flex;

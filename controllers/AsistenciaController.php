@@ -268,7 +268,7 @@ class AsistenciaController extends BaseController
         }
 
         if (!Catalogo::esCedulaValida($cedula)) {
-            $this->fallo('Ese número de cédula no es válido. Revisa los 10 dígitos.', $codigo, $sesion);
+            $this->fallo(Catalogo::porQueCedulaInvalida($cedula), $codigo, $sesion);
         }
 
         $estudiante = Estudiante::buscarPorCedula($cedula);
