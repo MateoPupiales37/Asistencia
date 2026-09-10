@@ -93,6 +93,15 @@ class Asistencia
         return (bool)$stmt->fetch();
     }
 
+    /** El registro de un alumno en una clase, o null si no marco asistencia */
+    public static function buscarPorSesionYEstudiante(int $sesionId, int $estudianteId): ?array
+    {
+        $db = Database::conectar();
+        $stmt = $db->prepare(self::SELECT_BASE . " WHERE a.sesion_id = ? AND a.estudiante_id = ? LIMIT 1");
+        $stmt->execute([$sesionId, $estudianteId]);
+        return $stmt->fetch() ?: null;
+    }
+
     public static function buscarPorId(int $id): ?array
     {
         $db = Database::conectar();

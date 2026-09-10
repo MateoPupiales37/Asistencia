@@ -314,6 +314,7 @@ $tok = htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8');
                                 <td class="table-code"><?= htmlspecialchars($a['codigo']) ?></td>
                                 <td><?= date('H:i:s', strtotime($a['hora_entrada'])) ?></td>
                                 <td><?= $a['hora_salida'] ? date('H:i:s', strtotime($a['hora_salida'])) : '—' ?></td>
+                                <?php $justif = $justificaciones[(int)$a['estudiante_id']] ?? null; ?>
                                 <td>
                                     <span class="badge estado-<?= htmlspecialchars($a['estado']) ?>">
                                         <?= htmlspecialchars(Catalogo::etiquetaEstado($a['estado'])) ?>
@@ -321,6 +322,18 @@ $tok = htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8');
                                     <?php if (!empty($a['motivo'])): ?>
                                         <div class="motivo-linea" title="<?= htmlspecialchars((string)$a['motivo_detalle']) ?>">
                                             <?= htmlspecialchars(Catalogo::etiquetaMotivo($a['motivo'])) ?>
+                                        </div>
+                                    <?php endif; ?>
+                                    <?php if ($justif && !empty($justif['archivo'])): ?>
+                                        <div>
+                                            <a href="<?= $base ?>/docente/justificante?id=<?= (int)$justif['id'] ?>"
+                                               target="_blank" rel="noopener" class="enlace-respaldo">
+                                                Ver respaldo adjunto
+                                            </a>
+                                        </div>
+                                    <?php elseif ($justif): ?>
+                                        <div class="text-muted" style="font-size:.74rem">
+                                            Justificado, sin respaldo adjunto
                                         </div>
                                     <?php endif; ?>
                                 </td>
@@ -347,6 +360,25 @@ $tok = htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8');
                                                 <input type="hidden" name="asistencia_id" value="<?= (int)$a['id'] ?>">
                                                 <button type="submit" class="btn btn-sm btn-outline">Volvió a clase</button>
                                             </form>
+                                        <?php endif; ?>
+
+                                        <?php
+                                        /* El respaldo no es solo para quien falto: el alumno que se
+                                           retiro por una cita medica tambien trae su certificado, y
+                                           hasta ahora no habia donde adjuntarlo. */
+                                        ?>
+                                        <?php if ($a['estado'] !== 'presente'): ?>
+                                            <button type="button" class="btn btn-sm <?= $justif ? 'btn-outline' : 'btn-dorado' ?>"
+                                                    title="Adjuntar el certificado o el permiso que respalda esta salida"
+                                                    onclick='justificar(<?= json_encode([
+                                                        "id"     => (int)$a["estudiante_id"],
+                                                        "nombre" => trim($a["nombre"] . " " . $a["apellido"]),
+                                                        "tipo"   => $justif["tipo"] ?? "",
+                                                        "detalle"=> $justif["detalle"] ?? "",
+                                                        "esSalida" => true
+                                                    ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>)'>
+                                                <?= $justif ? 'Respaldo' : 'Adjuntar respaldo' ?>
+                                            </button>
                                         <?php endif; ?>
 
                                         <form action="<?= $base ?>/docente/asistencia/eliminar" method="POST" class="inline"
@@ -438,7 +470,8 @@ $tok = htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8');
                                                     "id"     => (int)$f["id"],
                                                     "nombre" => trim($f["nombre"] . " " . $f["apellido"]),
                                                     "tipo"   => $f["justificacion_tipo"] ?? "",
-                                                    "detalle"=> $f["justificacion_detalle"] ?? ""
+                                                    "detalle"=> $f["justificacion_detalle"] ?? "",
+                                                    "esSalida" => false
                                                 ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>)'>
                                             <?= $justificada ? 'Corregir' : 'Justificar' ?>
                                         </button>
@@ -848,7 +881,7 @@ $tok = htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8');
 <div id="modalJustificar" class="modal-overlay">
     <div class="modal-content">
         <div class="modal-header-row">
-            <h3 class="modal-title mb-0">Justificar falta</h3>
+            <h3 class="modal-title mb-0" id="tituloJustificar">Justificar falta</h3>
             <button type="button" class="modal-close-btn" onclick="cerrarModal('modalJustificar')">&times;</button>
         </div>
 
@@ -1066,10 +1099,17 @@ function revisarDetalle() {
         : 'Con este motivo la salida queda como NO justificada.';
 }
 
-/** Abre el formulario para justificar la falta de un alumno */
+/**
+ * Abre el formulario del justificante.
+ *
+ * Sirve para los dos casos, porque el respaldo es el mismo papel: el alumno
+ * que no vino y el que se retiro antes por una cita medica.
+ */
 function justificar(alumno) {
     document.getElementById('justificarEstudianteId').value = alumno.id;
     document.getElementById('justificarNombre').textContent = alumno.nombre;
+    document.getElementById('tituloJustificar').textContent =
+        alumno.esSalida ? 'Respaldo de la salida' : 'Justificar falta';
     document.getElementById('justificarTipo').value = alumno.tipo || '';
     document.getElementById('justificarDetalle').value = alumno.detalle || '';
 

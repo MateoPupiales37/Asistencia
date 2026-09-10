@@ -1390,9 +1390,16 @@ class DocenteController extends BaseController
         $estudiante = Estudiante::buscarPorId($estudianteId);
         $nombre     = trim(($estudiante['nombre'] ?? '') . ' ' . ($estudiante['apellido'] ?? ''));
 
+        // El mismo justificante respalda dos cosas distintas: la falta de
+        // quien no vino y la salida de quien se retiro antes. Decirle
+        // "falta justificada" al docente que acaba de respaldar una salida lo
+        // haria dudar de si el sistema entendio lo que hizo.
+        $vino = Asistencia::buscarPorSesionYEstudiante($sesionId, $estudianteId) !== null;
+
         $this->redirigirConMensaje(
-            "Falta de {$nombre} justificada como " . Justificacion::etiquetaTipo($tipo)
-            . ($archivo !== null ? ' con respaldo adjunto.' : '. Puedes adjuntar el respaldo más tarde.'),
+            ($vino ? "Salida de {$nombre} respaldada como " : "Falta de {$nombre} justificada como ")
+            . Justificacion::etiquetaTipo($tipo)
+            . ($archivo !== null ? ' con documento adjunto.' : '. Puedes adjuntar el documento más tarde.'),
             '/docente'
         );
     }
