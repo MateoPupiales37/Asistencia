@@ -20,6 +20,16 @@
 -- que el docente adjunta para justificar la falta o la salida de un alumno.
 --
 -- Ejecutar en phpMyAdmin sobre la base asistencia_qr.
+--
+-- SI SE EJECUTA DESDE LA CONSOLA DE WINDOWS, hay que pedir el juego de
+-- caracteres de forma explicita:
+--
+--     mysql -u root --default-character-set=utf8mb4 < migracion_6_academico.sql
+--
+-- Sin esa opcion el cliente traduce desde la pagina de codigos de la
+-- consola y los acentos entran rotos: "Mecanica Automotriz" quedo guardada
+-- una vez con la letra a partida por esto mismo. El SET NAMES de mas abajo
+-- cubre el archivo completo, pero no cubre un  -e "..."  suelto.
 -- =====================================================================
 
 USE asistencia_qr;
