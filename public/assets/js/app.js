@@ -414,6 +414,64 @@
     }
 
     // ======================================================================
+    // Boton "Ver" en los campos de contraseña
+    //
+    // Se pone solo, en todos. Antes existia unicamente en el acceso, con su
+    // propia funcion escrita a mano en la vista; eso dejaba sin el a los cinco
+    // campos restantes, que son justo donde mas falta hace: el administrador
+    // escribe una contraseña que despues tiene que dictarle al docente, y sin
+    // poder verla no hay forma de comprobar que la escribio bien.
+    //
+    // Al hacerlo aqui, cualquier campo de contraseña que se agregue en el
+    // futuro lo hereda sin tener que acordarse.
+    // ======================================================================
+
+    function ponerBotonVer(campo) {
+        if (campo.dataset.conBotonVer === '1') return;
+        campo.dataset.conBotonVer = '1';
+
+        // El campo necesita un contenedor posicionado donde anclar el boton
+        var envoltorio = campo.parentNode;
+
+        if (!envoltorio || !envoltorio.classList.contains('input-con-boton')) {
+            envoltorio = document.createElement('div');
+            envoltorio.className = 'input-con-boton';
+            campo.parentNode.insertBefore(envoltorio, campo);
+            envoltorio.appendChild(campo);
+        }
+
+        // Si la vista ya trae su propio boton, no se agrega un segundo
+        if (envoltorio.querySelector('.btn-ver-clave')) return;
+
+        var boton = document.createElement('button');
+        boton.type = 'button';          // Sin esto enviaria el formulario
+        boton.className = 'btn-ver-clave';
+        boton.textContent = 'Ver';
+        boton.setAttribute('aria-label', 'Mostrar contraseña');
+
+        boton.addEventListener('click', function () {
+            var oculto = campo.type === 'password';
+            campo.type = oculto ? 'text' : 'password';
+            boton.textContent = oculto ? 'Ocultar' : 'Ver';
+            boton.setAttribute('aria-label', oculto ? 'Ocultar contraseña' : 'Mostrar contraseña');
+            campo.focus();
+        });
+
+        envoltorio.appendChild(boton);
+    }
+
+    function prepararCamposClave(raiz) {
+        var campos = (raiz || document).querySelectorAll('input[type="password"]');
+        Array.prototype.forEach.call(campos, ponerBotonVer);
+    }
+
+    document.addEventListener('DOMContentLoaded', function () { prepararCamposClave(); });
+
+    // Los formularios que llegan dentro de una region recien reemplazada por
+    // AJAX tambien lo necesitan: si no, el boton solo saldria al recargar
+    document.addEventListener('regiones:actualizadas', function () { prepararCamposClave(); });
+
+    // ======================================================================
     // Validacion mientras se escribe
     // ======================================================================
 

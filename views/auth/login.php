@@ -63,12 +63,9 @@ require dirname(__DIR__) . '/layouts/header.php';
 
             <div class="form-group mb-6">
                 <label for="password" class="form-label">Contraseña <span class="text-danger">*</span></label>
-                <div class="input-con-boton">
-                    <input type="password" id="password" name="password" class="form-control"
-                           required maxlength="72" autocomplete="current-password">
-                    <button type="button" class="btn-ver-clave" onclick="alternarClave(this)"
-                            aria-label="Mostrar contraseña">Ver</button>
-                </div>
+                <!-- El boton "Ver" lo agrega app.js a todos los campos de contraseña -->
+                <input type="password" id="password" name="password" class="form-control"
+                       required maxlength="72" autocomplete="current-password">
             </div>
 
             <button type="submit" class="btn btn-primary btn-block btn-lg">Ingresar</button>
@@ -119,14 +116,6 @@ require dirname(__DIR__) . '/layouts/header.php';
 function mostrarSolicitud(mostrar = true) {
     document.getElementById('cajaSolicitud').hidden = !mostrar;
     if (mostrar) document.getElementById('correo_solicitud').focus();
-}
-
-function alternarClave(boton) {
-    const campo = document.getElementById('password');
-    const oculto = campo.type === 'password';
-    campo.type = oculto ? 'text' : 'password';
-    boton.textContent = oculto ? 'Ocultar' : 'Ver';
-    boton.setAttribute('aria-label', oculto ? 'Ocultar contraseña' : 'Mostrar contraseña');
 }
 </script>
 
