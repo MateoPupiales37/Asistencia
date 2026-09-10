@@ -134,35 +134,72 @@ foreach ($matriculados as $m) {
                     Marca los que correspondan.
                 </p>
 
+                <?php
+                /* Filtro por semestre: acota el padron antes de mostrarlo.
+                   Se envia por GET, asi que conserva el curso seleccionado. */
+                ?>
+                <form method="GET" action="<?= $base ?>/docente/matriculas" class="filtro-semestre">
+                    <input type="hidden" name="curso_id" value="<?= (int)$cursoId ?>">
+                    <?php if (!empty($filtro)): ?>
+                        <input type="hidden" name="filtro" value="<?= htmlspecialchars($filtro, ENT_QUOTES, 'UTF-8') ?>">
+                    <?php endif; ?>
+
+                    <label for="semestre_padron" class="form-label mb-0">Ver semestre:</label>
+                    <select id="semestre_padron" name="semestre" class="form-select"
+                            onchange="this.form.requestSubmit()">
+                        <option value="">Todos los semestres</option>
+                        <?php foreach ($semestres as $s): ?>
+                            <option value="<?= htmlspecialchars($s, ENT_QUOTES, 'UTF-8') ?>"
+                                    <?= $semestreFiltro === $s ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($s) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <span class="text-muted"><?= count($candidatos) ?> disponible(s)</span>
+                </form>
+
                 <form action="<?= $base ?>/docente/matriculas/agregar" method="POST">
                     <input type="hidden" name="csrf_token" value="<?= $tok ?>">
                     <input type="hidden" name="curso_id" value="<?= (int)$cursoId ?>">
 
-                    <div class="lista-candidatos">
-                        <?php foreach ($candidatos as $e): ?>
-                            <?php $sinCarrera = empty($e['carrera_id']); ?>
-                            <label class="candidato <?= $sinCarrera ? 'sin-carrera' : '' ?>">
-                                <input type="checkbox" name="estudiante_id[]" value="<?= (int)$e['id'] ?>">
-                                <span>
-                                    <strong><?= htmlspecialchars(trim($e['apellido'] . ' ' . $e['nombre'])) ?></strong>
-                                    <small>
-                                        <?= htmlspecialchars($e['codigo']) ?>
-                                        <?= !empty($e['cedula']) ? ' · ' . htmlspecialchars($e['cedula']) : '' ?>
-                                        · <?= htmlspecialchars($e['semestre']) ?>
-                                    </small>
-                                    <?php if ($sinCarrera): ?>
-                                        <?php /* Recien importado: todavia no pertenece a ninguna
-                                                 carrera, asi que se avisa antes de marcarlo. Al
-                                                 matricularlo hereda la de este curso. */ ?>
-                                        <small class="candidato-aviso">
-                                            Sin carrera asignada &mdash; al matricularlo entrará en
-                                            <?= htmlspecialchars($carreraCurso ?? 'esta carrera') ?>
-                                        </small>
-                                    <?php endif; ?>
-                                </span>
-                            </label>
-                        <?php endforeach; ?>
-                    </div>
+                    <?php foreach ($candidatosPorSemestre as $semestreGrupo => $delGrupo): ?>
+                        <?php $idGrupo = 'grupo-' . preg_replace('/[^a-z0-9]/i', '', $semestreGrupo); ?>
+                        <div class="grupo-semestre" data-grupo="<?= htmlspecialchars($idGrupo, ENT_QUOTES, 'UTF-8') ?>">
+                            <div class="grupo-semestre-cabecera">
+                                <h3><?= htmlspecialchars($semestreGrupo) ?></h3>
+                                <span class="badge badge-neutral"><?= count($delGrupo) ?></span>
+                                <button type="button" class="btn btn-sm btn-outline"
+                                        onclick="marcarGrupo('<?= htmlspecialchars($idGrupo, ENT_QUOTES, 'UTF-8') ?>', true)">
+                                    Marcar este semestre
+                                </button>
+                            </div>
+
+                            <div class="lista-candidatos">
+                                <?php foreach ($delGrupo as $e): ?>
+                                    <?php $sinCarrera = empty($e['carrera_id']); ?>
+                                    <label class="candidato <?= $sinCarrera ? 'sin-carrera' : '' ?>">
+                                        <input type="checkbox" name="estudiante_id[]" value="<?= (int)$e['id'] ?>">
+                                        <span>
+                                            <strong><?= htmlspecialchars(trim($e['apellido'] . ' ' . $e['nombre'])) ?></strong>
+                                            <small>
+                                                <?= htmlspecialchars($e['codigo']) ?>
+                                                <?= !empty($e['cedula']) ? ' · ' . htmlspecialchars($e['cedula']) : '' ?>
+                                            </small>
+                                            <?php if ($sinCarrera): ?>
+                                                <?php /* Recien importado: todavia no pertenece a ninguna
+                                                         carrera, asi que se avisa antes de marcarlo. Al
+                                                         matricularlo hereda la de este curso. */ ?>
+                                                <small class="candidato-aviso">
+                                                    Sin carrera asignada &mdash; al matricularlo entrará en
+                                                    <?= htmlspecialchars($carreraCurso ?? 'esta carrera') ?>
+                                                </small>
+                                            <?php endif; ?>
+                                        </span>
+                                    </label>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
 
                     <div class="d-flex gap-2 flex-wrap mt-4">
                         <button type="button" class="btn btn-outline btn-sm" onclick="marcarTodos(true)">Marcar todos</button>
@@ -197,7 +234,7 @@ foreach ($matriculados as $m) {
                             <tr>
                                 <th>Estudiante</th>
                                 <th>Código</th>
-                                <th>Cédula</th>
+                                <th>Documento</th>
                                 <th>Teléfono</th>
                                 <th>Semestre</th>
                                 <th class="text-right">Acción</th>
@@ -209,7 +246,14 @@ foreach ($matriculados as $m) {
                                     <td class="font-medium"><?= htmlspecialchars(trim($e['apellido'] . ' ' . $e['nombre'])) ?></td>
                                     <td class="table-code"><?= htmlspecialchars($e['codigo']) ?></td>
                                     <td class="table-code">
-                                        <?= !empty($e['cedula']) ? htmlspecialchars($e['cedula']) : '<span class="text-danger">falta</span>' ?>
+                                        <?php if (!empty($e['cedula'])): ?>
+                                            <?= htmlspecialchars($e['cedula']) ?>
+                                            <?php if (($e['tipo_documento'] ?? 'cedula') === 'pasaporte'): ?>
+                                                <span class="mini-tag">pasaporte</span>
+                                            <?php endif; ?>
+                                        <?php else: ?>
+                                            <span class="text-danger">falta</span>
+                                        <?php endif; ?>
                                     </td>
                                     <td class="text-muted">
                                         <?= !empty($e['telefono'])
@@ -225,6 +269,7 @@ foreach ($matriculados as $m) {
                                                     "nombre"   => $e["nombre"],
                                                     "apellido" => $e["apellido"],
                                                     "cedula"   => (string)($e["cedula"] ?? ""),
+                                                    "tipo_documento" => (string)($e["tipo_documento"] ?? "cedula"),
                                                     "telefono" => (string)($e["telefono"] ?? ""),
                                                     "semestre" => $e["semestre"],
                                                     "codigo"   => $e["codigo"],
@@ -277,13 +322,60 @@ foreach ($matriculados as $m) {
                     </div>
                 </div>
 
+                <?php
+                /* Documento: cedula para los ecuatorianos y pasaporte para los
+                   extranjeros. Antes solo se admitia cedula, asi que un alumno
+                   de otro pais no se podia matricular de ninguna forma. */
+                ?>
+                <div class="form-fila">
+                    <div class="form-group">
+                        <label for="i_tipo_doc" class="form-label">Documento <span class="text-danger">*</span></label>
+                        <select id="i_tipo_doc" name="tipo_documento" class="form-select"
+                                onchange="ajustarDocumento('i')">
+                            <?php foreach ($tiposDocumento as $valor => $etiqueta): ?>
+                                <option value="<?= htmlspecialchars($valor, ENT_QUOTES, 'UTF-8') ?>">
+                                    <?= htmlspecialchars($etiqueta) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="i_cedula" class="form-label">
+                            <span id="i_doc_etiqueta">Número de cédula</span> <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" id="i_cedula" name="cedula" class="form-control form-control-code"
+                               required inputmode="numeric" maxlength="10" placeholder="1701234567">
+                    </div>
+                </div>
+
+                <small class="form-ayuda" id="i_doc_ayuda">
+                    Obligatorio: es lo que le permite registrarse aunque olvide su código o pierda el carnet.
+                </small>
+
                 <div class="form-group">
-                    <label for="i_cedula" class="form-label">Cédula <span class="text-danger">*</span></label>
-                    <input type="text" id="i_cedula" name="cedula" class="form-control form-control-code"
-                           required inputmode="numeric" maxlength="10" placeholder="1701234567"
-                           oninput="this.value = this.value.replace(/\D/g,'')">
+                    <label for="i_carrera" class="form-label">Carrera <span class="text-danger">*</span></label>
+                    <select id="i_carrera" name="carrera_id" class="form-select" required
+                            onchange="revisarCarrera()">
+                        <?php foreach ($carreras as $c): ?>
+                            <option value="<?= (int)$c['id'] ?>"
+                                    data-sigla="<?= htmlspecialchars($c['codigo'], ENT_QUOTES, 'UTF-8') ?>"
+                                    <?= (int)$c['id'] === (int)$carreraCursoId ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($c['nombre']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                     <small class="form-ayuda">
-                        Obligatoria: es lo que le permite registrarse aunque olvide su código o pierda el carnet.
+                        Viene marcada la carrera de este curso. Su código empezará por las
+                        siglas: <strong id="i_ejemploCodigo">&mdash;</strong>
+                    </small>
+                    <?php /* Cambiarla es legitimo —hay materias que dos carreras
+                             comparten— pero conviene que se vea, porque de la carrera
+                             sale el identificador del alumno. */ ?>
+                    <small class="form-ayuda text-danger" id="i_avisoCarrera" hidden>
+                        Esta no es la carrera del curso
+                        (<?= htmlspecialchars($carreraCurso ?? '—') ?>). El alumno quedará
+                        registrado en la que elijas, y se matricula igual en este curso.
                     </small>
                 </div>
 
@@ -343,11 +435,26 @@ foreach ($matriculados as $m) {
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="e_cedula" class="form-label">Cédula <span class="text-danger">*</span></label>
-                    <input type="text" id="e_cedula" name="cedula" class="form-control form-control-code"
-                           required inputmode="numeric" maxlength="10"
-                           oninput="this.value = this.value.replace(/\D/g,'')">
+                <div class="form-fila">
+                    <div class="form-group">
+                        <label for="e_tipo_doc" class="form-label">Documento <span class="text-danger">*</span></label>
+                        <select id="e_tipo_doc" name="tipo_documento" class="form-select"
+                                onchange="ajustarDocumento('e')">
+                            <?php foreach ($tiposDocumento as $valor => $etiqueta): ?>
+                                <option value="<?= htmlspecialchars($valor, ENT_QUOTES, 'UTF-8') ?>">
+                                    <?= htmlspecialchars($etiqueta) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="e_cedula" class="form-label">
+                            <span id="e_doc_etiqueta">Número de cédula</span> <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" id="e_cedula" name="cedula" class="form-control form-control-code"
+                               required inputmode="numeric" maxlength="10">
+                    </div>
                 </div>
 
                 <div class="form-fila mb-6">
@@ -445,9 +552,137 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
 });
 
+/*
+ * Mantiene al dia el ejemplo del codigo y el aviso de carrera distinta.
+ *
+ * El ejemplo importa porque de la carrera sale el identificador del alumno
+ * (DSW-001, MEA-001): verlo antes de guardar evita el codigo equivocado.
+ */
+const CARRERA_DEL_CURSO = '<?= (int)$carreraCursoId ?>';
+
+function revisarCarrera() {
+    const select = document.getElementById('i_carrera');
+    if (!select || !select.selectedOptions.length) return;
+
+    const sigla = select.selectedOptions[0].dataset.sigla || 'EST';
+    document.getElementById('i_ejemploCodigo').textContent = sigla + '-00…';
+
+    const aviso = document.getElementById('i_avisoCarrera');
+    if (aviso) {
+        aviso.hidden = (select.value === CARRERA_DEL_CURSO);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', revisarCarrera);
+
+/*
+ * El campo del documento cambia de forma segun el tipo elegido.
+ *
+ * No es un detalle estetico: la cedula solo admite digitos y son diez
+ * exactos, mientras que un pasaporte lleva letras y su largo varia. Con un
+ * unico campo "solo numeros, maximo 10" no habia manera de escribir un
+ * pasaporte, que es justamente lo que dejaba fuera a los extranjeros.
+ */
+function ajustarDocumento(prefijo) {
+    const tipo    = document.getElementById(prefijo + '_tipo_doc');
+    const campo   = document.getElementById(prefijo + '_cedula');
+    const etiqueta = document.getElementById(prefijo + '_doc_etiqueta');
+    if (!tipo || !campo) return;
+
+    const esPasaporte = (tipo.value === 'pasaporte');
+
+    if (esPasaporte) {
+        campo.maxLength = 15;
+        campo.placeholder = 'AB123456';
+        campo.inputMode = 'text';
+        campo.setAttribute('autocapitalize', 'characters');
+        if (etiqueta) etiqueta.textContent = 'Número de pasaporte';
+    } else {
+        campo.maxLength = 10;
+        campo.placeholder = '1701234567';
+        campo.inputMode = 'numeric';
+        campo.removeAttribute('autocapitalize');
+        if (etiqueta) etiqueta.textContent = 'Número de cédula';
+    }
+
+    // Se limpia lo que ya no encaja con el tipo nuevo
+    campo.value = esPasaporte
+        ? campo.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15)
+        : campo.value.replace(/\D/g, '').slice(0, 10);
+
+    const ayuda = document.getElementById(prefijo + '_doc_ayuda');
+    if (ayuda) {
+        ayuda.textContent = esPasaporte
+            ? 'Entre 6 y 15 letras y números, tal como aparece en el pasaporte.'
+            : 'Obligatorio: es lo que le permite registrarse aunque olvide su código o pierda el carnet.';
+    }
+}
+
+/** Filtra lo que se teclea segun el tipo de documento activo */
+function filtrarDocumento(prefijo) {
+    const tipo  = document.getElementById(prefijo + '_tipo_doc');
+    const campo = document.getElementById(prefijo + '_cedula');
+    if (!tipo || !campo) return;
+
+    campo.value = (tipo.value === 'pasaporte')
+        ? campo.value.toUpperCase().replace(/[^A-Z0-9]/g, '')
+        : campo.value.replace(/\D/g, '');
+}
+
+/** Comprueba el documento antes de enviar. Devuelve false si no pasa. */
+function validarDocumento(prefijo, evento) {
+    const tipo  = document.getElementById(prefijo + '_tipo_doc');
+    const campo = document.getElementById(prefijo + '_cedula');
+    if (!tipo || !campo) return true;
+
+    const valor = campo.value.trim();
+
+    if (tipo.value === 'pasaporte') {
+        // Sin digito verificador que comprobar: se exige una forma plausible
+        const bien = /^[A-Z0-9]{6,15}$/.test(valor) && /\d/.test(valor);
+        if (!bien) {
+            evento.preventDefault();
+            (window.avisar || alert)(
+                'El pasaporte debe tener entre 6 y 15 letras y números, con al menos un dígito.',
+                'error'
+            );
+            campo.focus();
+            return false;
+        }
+        return true;
+    }
+
+    if (!window.cedulaValida || !window.cedulaValida(valor)) {
+        evento.preventDefault();
+        (window.avisar || alert)('La cédula no es válida. Revisa los 10 dígitos.', 'error');
+        campo.focus();
+        return false;
+    }
+
+    return true;
+}
+
+// Se enlaza el filtrado al teclear y se deja cada campo con la forma correcta
+document.addEventListener('DOMContentLoaded', function () {
+    ['i', 'e'].forEach(function (p) {
+        const campo = document.getElementById(p + '_cedula');
+        if (campo) {
+            campo.addEventListener('input', function () { filtrarDocumento(p); });
+        }
+        ajustarDocumento(p);
+    });
+});
+
 function marcarTodos(estado) {
     document.querySelectorAll('.lista-candidatos input[type=checkbox]')
         .forEach(c => { c.checked = estado; });
+}
+
+/** Marca de una vez a todo un semestre, que es como se matricula de verdad */
+function marcarGrupo(idGrupo, estado) {
+    const grupo = document.querySelector('[data-grupo="' + idGrupo + '"]');
+    if (!grupo) return;
+    grupo.querySelectorAll('input[type=checkbox]').forEach(c => { c.checked = estado; });
 }
 
 // La cédula es obligatoria al inscribir: se valida antes de enviar para no
@@ -456,7 +691,9 @@ function editarEstudiante(datos) {
     document.getElementById('e_id').value       = datos.id;
     document.getElementById('e_nombre').value   = datos.nombre;
     document.getElementById('e_apellido').value = datos.apellido;
+    document.getElementById('e_tipo_doc').value = datos.tipo_documento || 'cedula';
     document.getElementById('e_cedula').value   = datos.cedula;
+    ajustarDocumento('e');
     document.getElementById('e_telefono').value = datos.telefono;
     document.getElementById('e_semestre').value = datos.semestre;
     document.getElementById('e_codigo').textContent = datos.codigo || '';
@@ -465,11 +702,7 @@ function editarEstudiante(datos) {
 }
 
 document.getElementById('formEditar')?.addEventListener('submit', function (e) {
-    const ced = document.getElementById('e_cedula').value.trim();
-    if (!window.cedulaValida || !window.cedulaValida(ced)) {
-        e.preventDefault();
-        (window.avisar || alert)('La cédula no es válida. Revisa los 10 dígitos.', 'error');
-        document.getElementById('e_cedula').focus();
+    if (!validarDocumento('e', e)) {
         return;
     }
     const tel = document.getElementById('e_telefono').value.replace(/\D/g, '');
@@ -481,11 +714,7 @@ document.getElementById('formEditar')?.addEventListener('submit', function (e) {
 });
 
 document.getElementById('formInscribir')?.addEventListener('submit', function (e) {
-    const ced = document.getElementById('i_cedula').value.trim();
-    if (!window.cedulaValida || !window.cedulaValida(ced)) {
-        e.preventDefault();
-        (window.avisar || alert)('La cédula no es válida. Revisa los 10 dígitos.', 'error');
-        document.getElementById('i_cedula').focus();
+    if (!validarDocumento('i', e)) {
         return;
     }
 

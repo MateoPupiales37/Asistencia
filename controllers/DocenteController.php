@@ -325,19 +325,27 @@ class DocenteController extends BaseController
                 $this->redirigirConError('Selecciona un estudiante de la lista.', '/docente');
             }
         } elseif ($modo === 'cedula') {
-            // El alumno esta en el padron pero no recuerda su codigo: la cedula
-            // lo identifica sin riesgo de confundirlo con un homonimo.
-            $cedula = Catalogo::normalizarCedula($_POST['cedula'] ?? '');
-
-            if (!Catalogo::esCedulaValida($cedula)) {
-                $this->redirigirConError(Catalogo::porQueCedulaInvalida($cedula), '/docente');
+            // El alumno esta en el padron pero no recuerda su codigo: su
+            // documento lo identifica sin riesgo de confundirlo con un homonimo.
+            // Vale tanto la cedula como el pasaporte del alumno extranjero.
+            $tipoDoc = trim($_POST['tipo_documento'] ?? '');
+            if (!Catalogo::esTipoDocumentoValido($tipoDoc)) {
+                // El docente no lo eligio: se deduce de lo que escribio
+                $tipoDoc = Catalogo::deducirTipoDocumento($_POST['cedula'] ?? '');
             }
 
-            $estudiante = Estudiante::buscarPorCedula($cedula);
+            $cedula = Catalogo::normalizarDocumento($_POST['cedula'] ?? '', $tipoDoc);
+
+            if (!Catalogo::esDocumentoValido($cedula, $tipoDoc)) {
+                $this->redirigirConError(Catalogo::porQueDocumentoInvalido($cedula, $tipoDoc), '/docente');
+            }
+
+            $estudiante = Estudiante::buscarPorDocumento($cedula, $tipoDoc);
 
             if (!$estudiante) {
                 $this->redirigirConError(
-                    "La cédula {$cedula} no está registrada. Usa \"Estudiante nuevo\" para darlo de alta.",
+                    Catalogo::etiquetaTipoDocumento($tipoDoc) . " {$cedula}: no está registrado. "
+                    . 'Usa "Estudiante nuevo" para darlo de alta.',
                     '/docente'
                 );
             }
@@ -348,7 +356,12 @@ class DocenteController extends BaseController
             $nombre   = $this->limpiarTexto($_POST['nombre'] ?? '');
             $apellido = $this->limpiarTexto($_POST['apellido'] ?? '');
             $semestre = trim($_POST['semestre'] ?? '');
-            $cedula   = Catalogo::normalizarCedula($_POST['cedula'] ?? '');
+
+            $tipoDoc = trim($_POST['tipo_documento'] ?? '');
+            if (!Catalogo::esTipoDocumentoValido($tipoDoc)) {
+                $tipoDoc = Catalogo::deducirTipoDocumento($_POST['cedula'] ?? '');
+            }
+            $cedula = Catalogo::normalizarDocumento($_POST['cedula'] ?? '', $tipoDoc);
 
             $this->validarNombre($nombre, 'nombre', '/docente');
             $this->validarNombre($apellido, 'apellido', '/docente');
@@ -357,21 +370,21 @@ class DocenteController extends BaseController
                 $this->redirigirConError('Selecciona un semestre válido para el estudiante.', '/docente');
             }
 
-            // La cedula es opcional aqui, pero si se escribe tiene que ser real:
-            // una cedula inventada arruinaria la identificacion futura del alumno
-            if ($cedula !== '' && !Catalogo::esCedulaValida($cedula)) {
-                $this->redirigirConError(Catalogo::porQueCedulaInvalida($cedula), '/docente');
+            // El documento es opcional aqui, pero si se escribe tiene que ser
+            // real: uno inventado arruinaria la identificacion futura del alumno
+            if ($cedula !== '' && !Catalogo::esDocumentoValido($cedula, $tipoDoc)) {
+                $this->redirigirConError(Catalogo::porQueDocumentoInvalido($cedula, $tipoDoc), '/docente');
             }
 
-            // Si esa cedula ya existe, ese ES el alumno: no se crea un duplicado
-            $existente = ($cedula !== '') ? Estudiante::buscarPorCedula($cedula) : null;
+            // Si ese documento ya existe, ese ES el alumno: no se crea duplicado
+            $existente = ($cedula !== '') ? Estudiante::buscarPorDocumento($cedula, $tipoDoc) : null;
 
             if (!$existente) {
                 $existente = Estudiante::buscarPorNombre($nombre, $apellido);
 
-                // Alumno viejo sin cedula cargada: se aprovecha para completarla
+                // Alumno viejo sin documento cargado: se aprovecha para completarlo
                 if ($existente && $cedula !== '' && empty($existente['cedula'])) {
-                    Estudiante::asignarCedula((int)$existente['id'], $cedula);
+                    Estudiante::asignarCedula((int)$existente['id'], $cedula, $tipoDoc);
                 }
             }
 
@@ -382,7 +395,8 @@ class DocenteController extends BaseController
                 $nombre, $apellido, $semestre,
                 ($cedula !== '' ? $cedula : null),
                 null,
-                Matricula::carreraDelCurso((int)$sesion['curso_id'])
+                Matricula::carreraDelCurso((int)$sesion['curso_id']),
+                $tipoDoc
             );
 
             if (!$estudiante) {
@@ -587,9 +601,36 @@ class DocenteController extends BaseController
             $filtro = '';
         }
 
+        // Semestre por el que se acotan los candidatos del padron. Con cinco
+        // carreras cargadas la lista llega a decenas de nombres mezclados, y
+        // el docente casi siempre matricula el semestre que tiene delante.
+        $semestreFiltro = trim($_GET['semestre'] ?? '');
+        if (!Catalogo::esSemestreValido($semestreFiltro)) {
+            $semestreFiltro = '';
+        }
+
         $curso        = $cursoId ? Curso::buscarPorId($cursoId) : null;
         $matriculados = $cursoId ? Matricula::estudiantesDeCurso($cursoId, true, $filtro) : [];
-        $candidatos   = $cursoId ? Matricula::candidatos($cursoId) : [];
+        $candidatos   = $cursoId ? Matricula::candidatos($cursoId, $semestreFiltro) : [];
+
+        /*
+         * Los candidatos se entregan agrupados por semestre.
+         *
+         * Antes salian todos en una sola tira: en la misma pantalla convivian
+         * alumnos de Primer y de Tercer Semestre, y para marcar los de un
+         * grupo habia que ir leyendo el semestre de cada tarjeta. Agrupados,
+         * el docente marca de un vistazo el bloque que le toca.
+         */
+        $candidatosPorSemestre = [];
+        foreach ($candidatos as $candidato) {
+            $candidatosPorSemestre[$candidato['semestre'] ?: 'Sin semestre'][] = $candidato;
+        }
+
+        // Se ordenan como el catalogo (Primero, Segundo...), no alfabeticamente
+        $orden = array_flip(Catalogo::semestres());
+        uksort($candidatosPorSemestre, static function ($a, $b) use ($orden) {
+            return ($orden[$a] ?? 99) <=> ($orden[$b] ?? 99);
+        });
 
         [$mensaje, $error] = $this->obtenerFlash();
 
@@ -600,9 +641,14 @@ class DocenteController extends BaseController
             'cursoId'      => $cursoId,
             'matriculados' => $matriculados,
             'candidatos'   => $candidatos,
+            'candidatosPorSemestre' => $candidatosPorSemestre,
+            'semestreFiltro'        => $semestreFiltro,
+            'tiposDocumento'        => Catalogo::TIPOS_DOCUMENTO,
             // Para poder decirle al docente de que carrera son los candidatos
             // que esta viendo, y por que no salen los demas
             'carreraCurso' => $curso['carrera'] ?? null,
+            'carreraCursoId' => isset($curso['carrera_id']) ? (int)$curso['carrera_id'] : null,
+            'carreras'     => Carrera::listar(),
             'filtro'       => $filtro,
             'totalCurso'   => $cursoId ? Matricula::contarPorCurso($cursoId) : 0,
             'totalNuevos'  => $cursoId ? Matricula::contarNuevos($cursoId) : 0,
@@ -663,8 +709,29 @@ class DocenteController extends BaseController
         $nombre   = $this->limpiarTexto($_POST['nombre'] ?? '');
         $apellido = $this->limpiarTexto($_POST['apellido'] ?? '');
         $semestre = trim($_POST['semestre'] ?? '');
-        $cedula   = Catalogo::normalizarCedula($_POST['cedula'] ?? '');
+
+        // El alumno extranjero no tiene cedula: declara que documento trae
+        $tipoDoc  = trim($_POST['tipo_documento'] ?? 'cedula');
+        if (!Catalogo::esTipoDocumentoValido($tipoDoc)) {
+            $tipoDoc = 'cedula';
+        }
+        $cedula   = Catalogo::normalizarDocumento($_POST['cedula'] ?? '', $tipoDoc);
         $telefono = trim($_POST['telefono'] ?? '');
+
+        /*
+         * La carrera se elige, con la del curso ya marcada.
+         *
+         * Casi siempre es la del curso, pero no siempre: hay materias que
+         * varias carreras comparten, y ahi el alumno pertenece a la suya
+         * aunque este sentado en esta clase. De esa carrera sale ademas el
+         * prefijo de su codigo (DSW-001, MEA-001), asi que equivocarse aqui
+         * es equivocarse en su identificador.
+         */
+        $carreraId = filter_var($_POST['carrera_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
+
+        if (!Carrera::existe($carreraId)) {
+            $carreraId = Matricula::carreraDelCurso($cursoId);
+        }
 
         $this->validarNombre($nombre, 'nombre', $ruta);
         $this->validarNombre($apellido, 'apellido', $ruta);
@@ -673,10 +740,10 @@ class DocenteController extends BaseController
             $this->redirigirConError('Selecciona un semestre válido.', $ruta);
         }
 
-        // La cedula es obligatoria aqui: es lo que despues le permite al alumno
-        // registrarse solo aunque pierda el carnet u olvide su codigo
-        if (!Catalogo::esCedulaValida($cedula)) {
-            $this->redirigirConError(Catalogo::porQueCedulaInvalida($cedula), $ruta);
+        // El documento es obligatorio aqui: es lo que despues le permite al
+        // alumno registrarse solo aunque pierda el carnet u olvide su codigo
+        if (!Catalogo::esDocumentoValido($cedula, $tipoDoc)) {
+            $this->redirigirConError(Catalogo::porQueDocumentoInvalido($cedula, $tipoDoc), $ruta);
         }
 
         // El telefono tambien es obligatorio: sin numero no hay forma de
@@ -689,7 +756,7 @@ class DocenteController extends BaseController
             );
         }
 
-        $existente = Estudiante::buscarPorCedula($cedula);
+        $existente = Estudiante::buscarPorDocumento($cedula, $tipoDoc);
 
         if ($existente) {
             // Ya estaba en el padron: no se duplica, solo se matricula
@@ -701,16 +768,14 @@ class DocenteController extends BaseController
             }
 
             $this->redirigirConMensaje(
-                'Esa cédula ya existía en el padrón (' . htmlspecialchars($existente['codigo'])
+                'Ese ' . mb_strtolower(Catalogo::etiquetaTipoDocumento($tipoDoc))
+                . ' ya existía en el padrón (' . htmlspecialchars($existente['codigo'])
                 . '). Se matriculó a ese estudiante en el curso.',
                 $ruta
             );
         }
 
-        $nuevo = Estudiante::crear(
-            $nombre, $apellido, $semestre, $cedula, $telefono,
-            Matricula::carreraDelCurso($cursoId)
-        );
+        $nuevo = Estudiante::crear($nombre, $apellido, $semestre, $cedula, $telefono, $carreraId, $tipoDoc);
 
         if (!$nuevo) {
             $this->redirigirConError('No se pudo crear el estudiante.', $ruta);
@@ -718,8 +783,12 @@ class DocenteController extends BaseController
 
         Matricula::matricular((int)$nuevo['id'], $cursoId);
 
+        $carrera = Carrera::buscarPorId($carreraId);
+
         $this->redirigirConMensaje(
-            "Estudiante inscrito con el código {$nuevo['codigo']} y matriculado en el curso.",
+            "Estudiante inscrito con el código {$nuevo['codigo']}"
+            . ($carrera ? " de {$carrera['nombre']}" : '')
+            . ' y matriculado en el curso.',
             $ruta
         );
     }
@@ -728,7 +797,7 @@ class DocenteController extends BaseController
      * Corrige los datos de un estudiante: nombre, cedula, telefono, semestre.
      * Sirve para cuando cambia de numero o se cargo un dato mal escrito.
      *
-     * El codigo (EST001) y el carnet QR no se tocan: son su identidad, y
+     * El codigo (DSW-001) y el carnet QR no se tocan: son su identidad, y
      * cambiarlos dejaria inservible el carnet que ya tiene impreso.
      */
     public function actualizarEstudiante(): void
@@ -754,7 +823,13 @@ class DocenteController extends BaseController
         $nombre   = $this->limpiarTexto($_POST['nombre'] ?? '');
         $apellido = $this->limpiarTexto($_POST['apellido'] ?? '');
         $semestre = trim($_POST['semestre'] ?? '');
-        $cedula   = Catalogo::normalizarCedula($_POST['cedula'] ?? '');
+
+        // El alumno extranjero no tiene cedula: declara que documento trae
+        $tipoDoc  = trim($_POST['tipo_documento'] ?? 'cedula');
+        if (!Catalogo::esTipoDocumentoValido($tipoDoc)) {
+            $tipoDoc = 'cedula';
+        }
+        $cedula   = Catalogo::normalizarDocumento($_POST['cedula'] ?? '', $tipoDoc);
         $telefono = trim($_POST['telefono'] ?? '');
 
         $this->validarNombre($nombre, 'nombre', $ruta);
@@ -763,8 +838,8 @@ class DocenteController extends BaseController
         if (!Catalogo::esSemestreValido($semestre)) {
             $this->redirigirConError('Selecciona un semestre válido.', $ruta);
         }
-        if (!Catalogo::esCedulaValida($cedula)) {
-            $this->redirigirConError(Catalogo::porQueCedulaInvalida($cedula), $ruta);
+        if (!Catalogo::esDocumentoValido($cedula, $tipoDoc)) {
+            $this->redirigirConError(Catalogo::porQueDocumentoInvalido($cedula, $tipoDoc), $ruta);
         }
         if (Estudiante::normalizarTelefono($telefono) === null) {
             $this->redirigirConError(
@@ -774,7 +849,7 @@ class DocenteController extends BaseController
         }
 
         $resultado = Estudiante::actualizarCompleto(
-            $estudianteId, $nombre, $apellido, $semestre, $cedula, $telefono
+            $estudianteId, $nombre, $apellido, $semestre, $cedula, $telefono, $tipoDoc
         );
 
         if ($resultado === 'cedula_ocupada') {
@@ -879,7 +954,11 @@ class DocenteController extends BaseController
             $fila     = $filas[$i];
             $numero   = $i + 1;
 
-            $cedula   = Catalogo::normalizarCedula($fila[0] ?? '');
+            // La columna del documento admite cedula o pasaporte: el tipo se
+            // deduce de lo escrito, porque pedir una columna mas en la
+            // plantilla complicaria la carga a quien solo tiene ecuatorianos.
+            $tipoDoc  = Catalogo::deducirTipoDocumento($fila[0] ?? '');
+            $cedula   = Catalogo::normalizarDocumento($fila[0] ?? '', $tipoDoc);
             $nombre   = $this->limpiarTexto($fila[1] ?? '');
             $apellido = $this->limpiarTexto($fila[2] ?? '');
             $semestre = trim($fila[3] ?? '');
@@ -889,9 +968,9 @@ class DocenteController extends BaseController
                 continue;   // fila en blanco
             }
 
-            if (!Catalogo::esCedulaValida($cedula)) {
-                $problemas[] = "Fila {$numero}: cédula \"" . ($fila[0] ?? '') . "\". "
-                             . Catalogo::porQueCedulaInvalida($cedula);
+            if (!Catalogo::esDocumentoValido($cedula, $tipoDoc)) {
+                $problemas[] = "Fila {$numero}: documento \"" . ($fila[0] ?? '') . "\". "
+                             . Catalogo::porQueDocumentoInvalido($cedula, $tipoDoc);
                 continue;
             }
             if (!preg_match(self::PATRON_NOMBRE, $nombre)) {
@@ -921,7 +1000,7 @@ class DocenteController extends BaseController
                 continue;
             }
 
-            $existente = Estudiante::buscarPorCedula($cedula);
+            $existente = Estudiante::buscarPorDocumento($cedula, $tipoDoc);
 
             if ($existente) {
                 $estudiante = $existente;
@@ -931,7 +1010,7 @@ class DocenteController extends BaseController
                 }
             } else {
                 $estudiante = Estudiante::crear(
-                    $nombre, $apellido, $semestreReal, $cedula, $telefono, $carreraDelCurso
+                    $nombre, $apellido, $semestreReal, $cedula, $telefono, $carreraDelCurso, $tipoDoc
                 );
 
                 if (!$estudiante) {
@@ -1014,7 +1093,7 @@ class DocenteController extends BaseController
         fwrite($salida, chr(0xEF) . chr(0xBB) . chr(0xBF));   // BOM para Excel
 
         // Los cinco campos son obligatorios: una fila incompleta se rechaza
-        fputcsv($salida, ['cedula', 'nombres', 'apellidos', 'semestre', 'telefono'], ';');
+        fputcsv($salida, ['cedula_o_pasaporte', 'nombres', 'apellidos', 'semestre', 'telefono'], ';');
 
         $ejemploSemestre = Catalogo::semestres()[0] ?? 'Primer Semestre';
         fputcsv($salida, ['1701234567', 'Saul', 'Andrade', $ejemploSemestre, '0991112233'], ';');
@@ -1152,17 +1231,18 @@ class DocenteController extends BaseController
         $this->verificarCsrf('/docente/carnets');
 
         $estudianteId = filter_var($_POST['estudiante_id'] ?? null, FILTER_VALIDATE_INT);
-        $cedula       = Catalogo::normalizarCedula($_POST['cedula'] ?? '');
+        $tipoDoc      = Catalogo::deducirTipoDocumento($_POST['cedula'] ?? '');
+        $cedula       = Catalogo::normalizarDocumento($_POST['cedula'] ?? '', $tipoDoc);
 
         if (!$estudianteId || !Estudiante::buscarPorId($estudianteId)) {
             $this->redirigirConError('Estudiante no encontrado.', '/docente/carnets');
         }
 
-        if (!Catalogo::esCedulaValida($cedula)) {
-            $this->redirigirConError(Catalogo::porQueCedulaInvalida($cedula), '/docente/carnets');
+        if (!Catalogo::esDocumentoValido($cedula, $tipoDoc)) {
+            $this->redirigirConError(Catalogo::porQueDocumentoInvalido($cedula, $tipoDoc), '/docente/carnets');
         }
 
-        if (!Estudiante::asignarCedula($estudianteId, $cedula)) {
+        if (!Estudiante::asignarCedula($estudianteId, $cedula, $tipoDoc)) {
             $this->redirigirConError(
                 "La cédula {$cedula} ya pertenece a otro estudiante del padrón.",
                 '/docente/carnets'

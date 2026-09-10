@@ -4771,3 +4771,72 @@ body.portada-body .footer {
 [hidden] {
     display: none !important;
 }
+
+/* --------------------------------------------------------------------------
+   PADRON AGRUPADO POR SEMESTRE
+   El docente matricula semestre por semestre, no alumno por alumno: verlos
+   mezclados obligaba a leer el semestre de cada tarjeta antes de marcarla.
+   -------------------------------------------------------------------------- */
+
+.filtro-semestre {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--color-border-light);
+}
+
+.filtro-semestre .form-select {
+    width: auto;
+    min-width: 190px;
+}
+
+.filtro-semestre .text-muted {
+    font-size: .84rem;
+}
+
+.grupo-semestre {
+    margin-bottom: 20px;
+}
+
+.grupo-semestre:last-of-type {
+    margin-bottom: 8px;
+}
+
+.grupo-semestre-cabecera {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+    padding: 7px 12px;
+    background: var(--color-surface-alt);
+    border-left: 3px solid var(--color-primary);
+    border-radius: var(--radius-sm);
+}
+
+.grupo-semestre-cabecera h3 {
+    margin: 0;
+    font-size: .95rem;
+    font-weight: var(--font-weight-bold, 700);
+    color: var(--color-primary-dark);
+}
+
+/* El boton de marcar el grupo se va al extremo y no estorba al titulo */
+.grupo-semestre-cabecera .btn {
+    margin-left: auto;
+}
+
+@media (max-width: 480px) {
+    .filtro-semestre .form-select {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .grupo-semestre-cabecera .btn {
+        margin-left: 0;
+        width: 100%;
+    }
+}

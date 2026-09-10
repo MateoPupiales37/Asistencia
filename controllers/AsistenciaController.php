@@ -214,7 +214,7 @@ class AsistenciaController extends BaseController
      * exista en el padron:
      *
      *   1. Carnet QR personal   -> token irrepetible
-     *   2. Codigo institucional -> EST001
+     *   2. Codigo institucional -> DSW-001, MEA-001 (las siglas son de su carrera)
      *   3. Numero de cedula     -> la via de respaldo
      *
      * Antes existia una cuarta via: escribir nombre, apellido y semestre, y
@@ -243,7 +243,7 @@ class AsistenciaController extends BaseController
 
         if ($codigoEst !== '') {
             if (!preg_match('/^[A-Z0-9_-]{3,15}$/', $codigoEst)) {
-                $this->fallo('Tu código debe tener entre 3 y 15 caracteres (ejemplo: EST001).', $codigo, $sesion);
+                $this->fallo('Tu código debe tener entre 3 y 15 caracteres (ejemplo: DSW-001).', $codigo, $sesion);
             }
 
             $estudiante = Estudiante::buscarPorCodigo($codigoEst);
@@ -260,18 +260,23 @@ class AsistenciaController extends BaseController
             return $this->exigirActivo($estudiante, $codigo, $sesion);
         }
 
-        // ---- 3. Numero de cedula ----
-        $cedula = Catalogo::normalizarCedula($_POST['cedula'] ?? '');
+        // ---- 3. Numero de documento (cedula o pasaporte) ----
+        //
+        // Aqui el alumno no elige tipo: escribe su numero y ya. Se deduce de
+        // lo que escribio, porque obligarle a marcar una casilla antes de
+        // entrar a clase solo añade un paso mas a algo que debe ser inmediato.
+        $tipoDoc = Catalogo::deducirTipoDocumento($_POST['cedula'] ?? '');
+        $cedula  = Catalogo::normalizarDocumento($_POST['cedula'] ?? '', $tipoDoc);
 
         if ($cedula === '') {
             $this->fallo('Escribe tu cédula o tu código de estudiante para identificarte.', $codigo, $sesion);
         }
 
-        if (!Catalogo::esCedulaValida($cedula)) {
-            $this->fallo(Catalogo::porQueCedulaInvalida($cedula), $codigo, $sesion);
+        if (!Catalogo::esDocumentoValido($cedula, $tipoDoc)) {
+            $this->fallo(Catalogo::porQueDocumentoInvalido($cedula, $tipoDoc), $codigo, $sesion);
         }
 
-        $estudiante = Estudiante::buscarPorCedula($cedula);
+        $estudiante = Estudiante::buscarPorDocumento($cedula, $tipoDoc);
 
         // AQUI esta el control que faltaba: una cedula valida pero que no
         // existe en el padron NO da de alta a nadie. Sin esto, cualquiera
@@ -279,7 +284,7 @@ class AsistenciaController extends BaseController
         // registrar una asistencia de un alumno que no existe.
         if (!$estudiante) {
             $this->fallo(
-                "La cédula {$cedula} no está registrada en el sistema. "
+                Catalogo::etiquetaTipoDocumento($tipoDoc) . " {$cedula}: no está registrado en el sistema. "
                 . 'Solo pueden registrar asistencia los estudiantes matriculados: '
                 . 'habla con tu docente.',
                 $codigo,

@@ -9,7 +9,7 @@ require_once __DIR__ . '/Catalogo.php';
 
 class Estudiante
 {
-    // Busca por el codigo institucional escrito a mano (ej. EST001)
+    // Busca por el codigo institucional escrito a mano (ej. DSW-001)
     public static function buscarPorCodigo(string $codigo): ?array
     {
         $db = Database::conectar();
@@ -21,18 +21,39 @@ class Estudiante
     // Busca por numero de cedula: es la via de respaldo cuando el alumno no
     // recuerda su codigo institucional. Se normaliza primero porque el alumno
     // la escribe con guiones o espacios segun el teclado del celular.
-    public static function buscarPorCedula(string $cedula): ?array
+    /**
+     * Busca por el numero de documento, sea cedula o pasaporte.
+     *
+     * Cuando no se indica el tipo se prueban las dos formas de limpiarlo: el
+     * alumno que se registra en clase no elige tipo, solo teclea un numero, y
+     * el sistema tiene que encontrarlo igual. La cedula se deja en digitos y
+     * el pasaporte en mayusculas sin separadores, asi que un mismo texto puede
+     * dar dos formas distintas.
+     */
+    public static function buscarPorDocumento(string $documento, ?string $tipo = null): ?array
     {
-        $cedula = Catalogo::normalizarCedula($cedula);
-
-        if ($cedula === '') {
-            return null;
-        }
-
         $db = Database::conectar();
         $stmt = $db->prepare("SELECT * FROM estudiantes WHERE cedula = ? LIMIT 1");
-        $stmt->execute([$cedula]);
-        return $stmt->fetch() ?: null;
+
+        $formas = ($tipo === null)
+            ? [Catalogo::normalizarCedula($documento), Catalogo::normalizarPasaporte($documento)]
+            : [Catalogo::normalizarDocumento($documento, $tipo)];
+
+        foreach (array_unique(array_filter($formas)) as $forma) {
+            $stmt->execute([$forma]);
+            $fila = $stmt->fetch();
+            if ($fila) {
+                return $fila;
+            }
+        }
+
+        return null;
+    }
+
+    /** Nombre anterior del metodo. Se conserva para no reescribir las llamadas ya existentes. */
+    public static function buscarPorCedula(string $cedula): ?array
+    {
+        return self::buscarPorDocumento($cedula);
     }
 
     // Busca por el token del carnet QR personal
@@ -177,14 +198,19 @@ class Estudiante
         string $semestre,
         ?string $cedula = null,
         ?string $telefono = null,
-        ?int $carreraId = null
+        ?int $carreraId = null,
+        string $tipoDocumento = 'cedula'
     ): ?array
     {
         $db = Database::conectar();
 
-        $cedula = ($cedula !== null) ? Catalogo::normalizarCedula($cedula) : '';
+        if (!Catalogo::esTipoDocumentoValido($tipoDocumento)) {
+            $tipoDocumento = 'cedula';
+        }
+
+        $cedula = ($cedula !== null) ? Catalogo::normalizarDocumento($cedula, $tipoDocumento) : '';
         if ($cedula !== '') {
-            $existente = self::buscarPorCedula($cedula);
+            $existente = self::buscarPorDocumento($cedula, $tipoDocumento);
             if ($existente) {
                 return $existente;
             }
@@ -192,17 +218,18 @@ class Estudiante
 
         // Se reintenta por si dos registros simultaneos piden el mismo correlativo
         for ($intento = 0; $intento < 5; $intento++) {
-            $codigo = self::siguienteCodigo();
+            $codigo = self::siguienteCodigo(self::prefijoDeCarrera($carreraId));
             $token  = bin2hex(random_bytes(16));
 
             try {
                 $stmt = $db->prepare(
                     "INSERT INTO estudiantes
-                        (codigo, cedula, telefono, nombre, apellido, semestre, carrera_id, token_qr)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                        (codigo, tipo_documento, cedula, telefono, nombre, apellido, semestre, carrera_id, token_qr)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 );
                 $stmt->execute([
                     $codigo,
+                    $tipoDocumento,
                     ($cedula !== '' ? $cedula : null),
                     self::normalizarTelefono($telefono),
                     $nombre, $apellido, $semestre, $carreraId, $token
@@ -213,10 +240,10 @@ class Estudiante
                     return null;   // Error distinto a "clave duplicada"
                 }
 
-                // Choque de cedula: otro registro simultaneo la gano. Se devuelve
-                // esa ficha en vez de reintentar y crear un duplicado.
+                // Choque de documento: otro registro simultaneo lo gano. Se
+                // devuelve esa ficha en vez de reintentar y crear un duplicado.
                 if ($cedula !== '') {
-                    $existente = self::buscarPorCedula($cedula);
+                    $existente = self::buscarPorDocumento($cedula, $tipoDocumento);
                     if ($existente) {
                         return $existente;
                     }
@@ -231,22 +258,26 @@ class Estudiante
      * Carga la cedula de un alumno que ya estaba en el padron sin ella.
      * Devuelve false si esa cedula ya pertenece a otro estudiante.
      */
-    public static function asignarCedula(int $id, string $cedula): bool
+    public static function asignarCedula(int $id, string $cedula, string $tipo = 'cedula'): bool
     {
-        $cedula = Catalogo::normalizarCedula($cedula);
+        if (!Catalogo::esTipoDocumentoValido($tipo)) {
+            $tipo = 'cedula';
+        }
+
+        $cedula = Catalogo::normalizarDocumento($cedula, $tipo);
 
         if ($cedula === '') {
             return false;
         }
 
-        $duenio = self::buscarPorCedula($cedula);
+        $duenio = self::buscarPorDocumento($cedula, $tipo);
         if ($duenio && (int)$duenio['id'] !== $id) {
             return false;
         }
 
         $db = Database::conectar();
-        $stmt = $db->prepare("UPDATE estudiantes SET cedula = ? WHERE id = ?");
-        return $stmt->execute([$cedula, $id]);
+        $stmt = $db->prepare("UPDATE estudiantes SET cedula = ?, tipo_documento = ? WHERE id = ?");
+        return $stmt->execute([$cedula, $tipo, $id]);
     }
 
     public static function actualizar(int $id, string $nombre, string $apellido, string $semestre): bool
@@ -265,11 +296,15 @@ class Estudiante
      */
     public static function actualizarCompleto(
         int $id, string $nombre, string $apellido, string $semestre,
-        string $cedula, ?string $telefono
+        string $cedula, ?string $telefono, string $tipoDocumento = 'cedula'
     ): string {
-        $cedula = Catalogo::normalizarCedula($cedula);
+        if (!Catalogo::esTipoDocumentoValido($tipoDocumento)) {
+            $tipoDocumento = 'cedula';
+        }
 
-        $duenio = self::buscarPorCedula($cedula);
+        $cedula = Catalogo::normalizarDocumento($cedula, $tipoDocumento);
+
+        $duenio = self::buscarPorDocumento($cedula, $tipoDocumento);
         if ($duenio && (int)$duenio['id'] !== $id) {
             return 'cedula_ocupada';
         }
@@ -279,12 +314,13 @@ class Estudiante
         try {
             $stmt = $db->prepare(
                 "UPDATE estudiantes
-                 SET nombre = ?, apellido = ?, semestre = ?, cedula = ?, telefono = ?
+                 SET nombre = ?, apellido = ?, semestre = ?, cedula = ?, tipo_documento = ?, telefono = ?
                  WHERE id = ?"
             );
             $ok = $stmt->execute([
                 $nombre, $apellido, $semestre,
                 ($cedula !== '' ? $cedula : null),
+                $tipoDocumento,
                 self::normalizarTelefono($telefono),
                 $id
             ]);
@@ -317,18 +353,64 @@ class Estudiante
         return (int)($db->query("SELECT COUNT(*) AS n FROM estudiantes WHERE activo = 1")->fetch()['n'] ?? 0);
     }
 
-    // Calcula el siguiente codigo correlativo disponible (EST001, EST002, ...)
-    public static function siguienteCodigo(): string
-    {
-        $db = Database::conectar();
-        $fila = $db->query(
-            "SELECT MAX(CAST(SUBSTRING(codigo, 4) AS UNSIGNED)) AS maximo
-             FROM estudiantes
-             WHERE codigo REGEXP '^EST[0-9]+$'"
-        )->fetch();
+    /** Prefijo que se usa cuando el alumno todavia no tiene carrera */
+    public const PREFIJO_SIN_CARRERA = 'EST';
 
-        $siguiente = (int)($fila['maximo'] ?? 0) + 1;
-        return 'EST' . str_pad((string)$siguiente, 3, '0', STR_PAD_LEFT);
+    /**
+     * El codigo lleva dentro la carrera: DSW-001, MEA-001, END-001...
+     *
+     * Antes era un correlativo unico para todo el instituto (EST001, EST002).
+     * Con cinco carreras eso no dice nada: al ver "EST014" en una lista no hay
+     * forma de saber de quien es, y al repartir carnets o dictar codigos en
+     * clase se mezclaban. Con el prefijo de la carrera, el propio codigo lo
+     * responde.
+     *
+     * La numeracion es independiente por carrera, asi que cada una empieza en
+     * 001 y no hereda huecos de las demas.
+     */
+    public static function siguienteCodigo(?string $prefijo = null): string
+    {
+        $prefijo = self::limpiarPrefijo($prefijo);
+
+        $db = Database::conectar();
+
+        // Se cuenta solo dentro de este prefijo. El patron exige el guion para
+        // que "DSW-001" no se confunda con un hipotetico "DSWX-001".
+        $stmt = $db->prepare(
+            "SELECT MAX(CAST(SUBSTRING(codigo, ?) AS UNSIGNED)) AS maximo
+               FROM estudiantes
+              WHERE codigo REGEXP ?"
+        );
+        $stmt->execute([
+            strlen($prefijo) + 2,                       // 1-indexado, saltando el guion
+            '^' . preg_quote($prefijo, '/') . '-[0-9]+$'
+        ]);
+
+        $siguiente = (int)($stmt->fetch()['maximo'] ?? 0) + 1;
+
+        return $prefijo . '-' . str_pad((string)$siguiente, 3, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * El prefijo sale del codigo de la carrera y se limpia: va dentro de una
+     * expresion regular y de una clave UNIQUE, y la columna admite 15
+     * caracteres contando el guion y los tres digitos.
+     */
+    private static function limpiarPrefijo(?string $prefijo): string
+    {
+        $limpio = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string)$prefijo));
+
+        return ($limpio === '') ? self::PREFIJO_SIN_CARRERA : substr($limpio, 0, 10);
+    }
+
+    /** El prefijo que le toca a un alumno segun su carrera */
+    public static function prefijoDeCarrera(?int $carreraId): string
+    {
+        require_once __DIR__ . '/Carrera.php';
+
+        $carrera = Carrera::buscarPorId($carreraId);
+
+        return self::limpiarPrefijo($carrera['codigo'] ?? null);
     }
 
     /**

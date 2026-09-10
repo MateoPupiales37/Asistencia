@@ -136,21 +136,27 @@ $segundos   = $hayClase ? max(0, strtotime($sesion['expira_en']) - time()) : 0;
                    que no viaje al navegador: al usuario final no le aporta nada. */
                 ?>
                 <div class="tabs-identidad" role="tablist">
-                    <button type="button" class="tab-btn activo" data-modo="cedula" onclick="cambiarModo('cedula')" role="tab" aria-selected="true">Mi cédula</button>
+                    <button type="button" class="tab-btn activo" data-modo="cedula" onclick="cambiarModo('cedula')" role="tab" aria-selected="true">Mi documento</button>
                     <button type="button" class="tab-btn" data-modo="codigo" onclick="cambiarModo('codigo')" role="tab" aria-selected="false">Mi código</button>
                 </div>
 
                 <div id="modoCedula" class="modo-identidad">
                     <div class="form-group mb-6">
-                        <label for="cedula" class="form-label">Número de Cédula <span class="text-danger">*</span></label>
+                        <label for="cedula" class="form-label">Cédula o pasaporte <span class="text-danger">*</span></label>
+                        <?php
+                        /* Un solo campo para los dos documentos: el alumno escribe su
+                           numero y el sistema deduce cual es. Pedirle que marque antes
+                           "cedula o pasaporte" seria un paso mas justo cuando esta
+                           entrando a clase con el docente esperando. */
+                        ?>
                         <input type="text" id="cedula" name="cedula"
                                class="form-control form-control-code"
-                               inputmode="numeric" maxlength="10" placeholder="1701234567"
-                               autocomplete="off" spellcheck="false"
-                               oninput="this.value = this.value.replace(/\D/g,'')">
+                               inputmode="text" maxlength="15" placeholder="1701234567"
+                               autocomplete="off" spellcheck="false" autocapitalize="characters"
+                               oninput="this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
                         <small class="form-ayuda">
-                            Los 10 dígitos de tu cédula. Es la forma más segura de identificarte
-                            si no recuerdas tu código de estudiante.
+                            Los 10 dígitos de tu cédula. Si eres estudiante extranjero,
+                            escribe tu número de pasaporte.
                         </small>
                     </div>
                 </div>
@@ -160,7 +166,7 @@ $segundos   = $hayClase ? max(0, strtotime($sesion['expira_en']) - time()) : 0;
                         <label for="codigo_estudiante" class="form-label">Tu Código de Estudiante</label>
                         <input type="text" id="codigo_estudiante" name="codigo_estudiante"
                                class="form-control form-control-code"
-                               maxlength="15" placeholder="Ej: EST001"
+                               maxlength="15" placeholder="Ej: DSW-001"
                                autocapitalize="characters" spellcheck="false"
                                oninput="this.value = this.value.toUpperCase().replace(/[^A-Z0-9_-]/g,'')">
                         <small class="form-ayuda">El código que aparece en tu carnet institucional.</small>
@@ -297,22 +303,37 @@ document.getElementById('formAsistencia').addEventListener('submit', function (e
         return caja && !caja.hidden;
     };
 
-    // --- Identificacion por cedula ---
+    // --- Identificacion por documento (cedula o pasaporte) ---
     if (visible('modoCedula')) {
-        const ced = document.getElementById('cedula').value.trim();
+        const doc = document.getElementById('cedula').value.trim();
 
-        if (!ced) {
+        if (!doc) {
             e.preventDefault();
-            avisoEscaner('error', 'Escribe tu número de cédula, o usa otra de las pestañas.');
+            avisoEscaner('error', 'Escribe tu cédula o pasaporte, o usa otra de las pestañas.');
             document.getElementById('cedula').focus();
             return;
         }
-        if (!cedulaValidaLocal(ced)) {
+
+        // Diez digitos: se entiende como cedula y se comprueba de verdad.
+        // Con letras: es un pasaporte, que no tiene digito verificador y solo
+        // se puede comprobar que tenga una forma plausible.
+        const esCedula = /^\d{10}$/.test(doc);
+
+        if (esCedula && !cedulaValidaLocal(doc)) {
             e.preventDefault();
             avisoEscaner('error', 'Esa cédula no es válida. Revisa que sean los 10 dígitos correctos.');
             document.getElementById('cedula').focus();
             return;
         }
+
+        if (!esCedula && !(/^[A-Z0-9]{6,15}$/.test(doc) && /\d/.test(doc))) {
+            e.preventDefault();
+            avisoEscaner('error',
+                'Si es una cédula debe tener 10 dígitos; si es un pasaporte, entre 6 y 15 letras y números.');
+            document.getElementById('cedula').focus();
+            return;
+        }
+
         return;
     }
 

@@ -245,6 +245,127 @@ class Catalogo
             . 'Revisa que no hayas cambiado dos números de lugar.';
     }
 
+    // ------------------------------------------------------------------
+    // Pasaporte
+    //
+    // Los estudiantes extranjeros no tienen cedula ecuatoriana. Su pasaporte
+    // no lleva digito verificador ni sigue un formato comun entre paises, asi
+    // que no se puede comprobar que sea "correcto": lo unico razonable es
+    // exigir una forma plausible y que no venga vacio ni con simbolos raros.
+    // ------------------------------------------------------------------
+
+    public const TIPOS_DOCUMENTO = [
+        'cedula'    => 'Cédula',
+        'pasaporte' => 'Pasaporte'
+    ];
+
+    public const PASAPORTE_MIN = 6;
+    public const PASAPORTE_MAX = 15;
+
+    /** Mayusculas y sin espacios ni guiones, que es como se escribe en el papel */
+    public static function normalizarPasaporte(?string $valor): string
+    {
+        return strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string)$valor));
+    }
+
+    /**
+     * Un pasaporte valido para el sistema:
+     *   - entre 6 y 15 caracteres,
+     *   - solo letras y numeros,
+     *   - con al menos un numero, para descartar que hayan escrito un nombre
+     *     o la palabra "pasaporte" en la casilla.
+     */
+    public static function esPasaporteValido(?string $valor): bool
+    {
+        $pasaporte = self::normalizarPasaporte($valor);
+        $largo = strlen($pasaporte);
+
+        if ($largo < self::PASAPORTE_MIN || $largo > self::PASAPORTE_MAX) {
+            return false;
+        }
+
+        return preg_match('/\d/', $pasaporte) === 1;
+    }
+
+    /** Explica en una frase por que un pasaporte no se admite */
+    public static function porQuePasaporteInvalido(?string $valor): string
+    {
+        $pasaporte = self::normalizarPasaporte($valor);
+        $largo = strlen($pasaporte);
+
+        if ($largo === 0) {
+            return 'Escribe el número de pasaporte.';
+        }
+
+        if ($largo < self::PASAPORTE_MIN) {
+            return 'El pasaporte debe tener al menos ' . self::PASAPORTE_MIN
+                 . ' caracteres y escribiste ' . $largo . '.';
+        }
+
+        if ($largo > self::PASAPORTE_MAX) {
+            return 'El pasaporte no puede pasar de ' . self::PASAPORTE_MAX
+                 . ' caracteres y escribiste ' . $largo . '.';
+        }
+
+        if (preg_match('/\d/', $pasaporte) !== 1) {
+            return 'Un número de pasaporte lleva al menos un dígito. Revisa lo que escribiste.';
+        }
+
+        return '';
+    }
+
+    // ------------------------------------------------------------------
+    // Documento (cedula o pasaporte, segun el tipo declarado)
+    //
+    // El resto del sistema trabaja con estas tres funciones y no necesita
+    // saber de que tipo se trata: le pasa el tipo y el numero, y aqui se
+    // decide que validacion corresponde.
+    // ------------------------------------------------------------------
+
+    public static function esTipoDocumentoValido(?string $tipo): bool
+    {
+        return isset(self::TIPOS_DOCUMENTO[(string)$tipo]);
+    }
+
+    /** Deja el documento como debe guardarse, segun su tipo */
+    public static function normalizarDocumento(?string $valor, string $tipo = 'cedula'): string
+    {
+        return ($tipo === 'pasaporte')
+            ? self::normalizarPasaporte($valor)
+            : self::normalizarCedula($valor);
+    }
+
+    public static function esDocumentoValido(?string $valor, string $tipo = 'cedula'): bool
+    {
+        return ($tipo === 'pasaporte')
+            ? self::esPasaporteValido($valor)
+            : self::esCedulaValida($valor);
+    }
+
+    public static function porQueDocumentoInvalido(?string $valor, string $tipo = 'cedula'): string
+    {
+        return ($tipo === 'pasaporte')
+            ? self::porQuePasaporteInvalido($valor)
+            : self::porQueCedulaInvalida($valor);
+    }
+
+    public static function etiquetaTipoDocumento(?string $tipo): string
+    {
+        return self::TIPOS_DOCUMENTO[(string)$tipo] ?? 'Documento';
+    }
+
+    /**
+     * Adivina el tipo a partir de lo escrito. Sirve en la pantalla publica,
+     * donde el alumno solo escribe un numero: si son diez digitos se trata
+     * como cedula y, si lleva letras, como pasaporte.
+     */
+    public static function deducirTipoDocumento(?string $valor): string
+    {
+        $limpio = self::normalizarPasaporte($valor);
+
+        return preg_match('/^\d{10}$/', $limpio) === 1 ? 'cedula' : 'pasaporte';
+    }
+
     public static function etiquetaEstado(?string $estado): string
     {
         return self::ESTADOS[$estado] ?? 'Desconocido';
