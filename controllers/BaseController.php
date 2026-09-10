@@ -205,16 +205,25 @@ class BaseController
             $this->json([
                 'ok'       => false,
                 'error'    => $mensaje,
-                'redirigir' => self::obtenerRutaBase() . '/acceso'
+                // A la portada y no a una puerta concreta: la sesion ya se
+                // vacio, asi que no queda forma de saber que rol tenia quien
+                // estaba usando el sistema.
+                'redirigir' => self::obtenerRutaBase() . '/'
             ], 401);
         }
 
         $_SESSION['flash_error'] = $mensaje;
-        $this->redireccionar('/acceso');
+        $this->redireccionar('/');
     }
 
-    // Verifica que el usuario tenga el rol de Administrador
-    protected function verificarAdmin(): void
+    /**
+     * Verifica que el usuario tenga el rol de Administrador.
+     *
+     * @param bool $exigirPeriodo Si el administrador debe haber elegido ya un
+     *        periodo academico. Solo se pone en false en la propia pantalla de
+     *        eleccion; en cualquier otra habria un bucle de redirecciones.
+     */
+    protected function verificarAdmin(bool $exigirPeriodo = true): void
     {
         self::abrirSesion();
 
@@ -229,6 +238,53 @@ class BaseController
             $_SESSION['flash_error'] = 'Acceso denegado: se requieren permisos de Administrador.';
             $this->redireccionar('/docente');
         }
+
+        if ($exigirPeriodo && $this->periodoActual() === null) {
+            $this->redireccionar('/admin/periodo');
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Periodo academico en curso
+    //
+    // Casi todo lo que ve el administrador esta acotado a un periodo: las
+    // materias, las asignaciones, los reportes. El periodo elegido vive en la
+    // sesion, asi que cada administrador puede estar revisando un ciclo
+    // distinto sin estorbarse.
+    // ---------------------------------------------------------------------
+
+    /** El periodo elegido, o el que corresponde a la fecha de hoy */
+    protected function periodoActual(): ?array
+    {
+        self::abrirSesion();
+
+        require_once dirname(__DIR__) . '/models/Periodo.php';
+
+        $elegido = Periodo::buscarPorId((int)($_SESSION['periodo_id'] ?? 0));
+
+        if ($elegido !== null) {
+            // El nombre viaja en la sesion para que la barra de navegacion lo
+            // muestre sin volver a consultar la base en cada pantalla
+            $_SESSION['periodo_nombre'] = $elegido['nombre'];
+            return $elegido;
+        }
+
+        // Nadie ha elegido todavia (o el que estaba elegido se borro): se
+        // propone el que esta en curso para no dejar la pantalla en blanco.
+        $porDefecto = Periodo::actual();
+
+        if ($porDefecto !== null) {
+            $_SESSION['periodo_id']     = (int)$porDefecto['id'];
+            $_SESSION['periodo_nombre'] = $porDefecto['nombre'];
+        }
+
+        return $porDefecto;
+    }
+
+    protected function idPeriodoActual(): ?int
+    {
+        $periodo = $this->periodoActual();
+        return $periodo ? (int)$periodo['id'] : null;
     }
 
     /**

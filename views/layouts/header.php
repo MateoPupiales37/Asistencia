@@ -12,6 +12,16 @@ $rutaActual = '/' . trim($uriActual, '/');
 
 $rolActual    = $_SESSION['usuario_rol'] ?? '';
 $nombreActual = $_SESSION['usuario_nombre'] ?? '';
+
+/*
+ * Periodo academico con el que trabaja el administrador.
+ *
+ * Va SIEMPRE a la vista en la barra, y no solo en la pantalla donde se elige.
+ * El motivo es concreto: sin recordatorio permanente es facil pasar una tarde
+ * entera cargando la malla del ciclo nuevo dentro del anterior sin notarlo, y
+ * deshacerlo despues es mucho mas caro que mostrar esta etiqueta.
+ */
+$periodoActual = $_SESSION['periodo_nombre'] ?? '';
 $hayNavbar    = !empty($_SESSION['usuario_id']) && empty($ocultarNavbar);
 ?>
 <!DOCTYPE html>
@@ -40,6 +50,16 @@ $hayNavbar    = !empty($_SESSION['usuario_id']) && empty($ocultarNavbar);
 
     <ul class="nav-links">
         <?php if ($rolActual === 'admin'): ?>
+            <?php if ($periodoActual !== ''): ?>
+                <li>
+                    <a href="<?= $base ?>/admin/periodo"
+                       class="nav-periodo <?= str_starts_with($rutaActual, '/admin/periodo') ? 'active' : '' ?>"
+                       title="Cambiar de período académico">
+                        <span class="nav-periodo-etiqueta">Período</span>
+                        <strong><?= htmlspecialchars($periodoActual) ?></strong>
+                    </a>
+                </li>
+            <?php endif; ?>
             <li><a href="<?= $base ?>/admin" class="nav-link <?= $rutaActual === '/admin' ? 'active' : '' ?>">Supervisión</a></li>
             <li><a href="<?= $base ?>/admin/materias" class="nav-link <?= str_starts_with($rutaActual, '/admin/materias') || str_starts_with($rutaActual, '/admin/semestres') ? 'active' : '' ?>">Materias</a></li>
             <li><a href="<?= $base ?>/admin/docentes" class="nav-link <?= str_starts_with($rutaActual, '/admin/docentes') ? 'active' : '' ?>">Cuentas</a></li>

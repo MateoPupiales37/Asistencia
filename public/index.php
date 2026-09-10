@@ -48,13 +48,18 @@ $ruta = '/' . trim($uri, '/');
 $rutas = [
     // --- Publico ---
     '/'                    => ['GET'  => [HomeController::class, 'index']],
-    // Acceso del personal (docentes y administradores)
-    '/acceso'              => ['GET'  => [AuthController::class, 'mostrarLogin'],
-                               'POST' => [AuthController::class, 'procesarLogin']],
+    // Acceso del personal: una puerta por rol. Cada una solo deja pasar al
+    // suyo, y la portada es la que reparte a quien va a cada sitio.
+    '/acceso/docente'      => ['GET'  => [AuthController::class, 'mostrarLoginDocente'],
+                               'POST' => [AuthController::class, 'procesarLoginDocente']],
+    '/acceso/admin'        => ['GET'  => [AuthController::class, 'mostrarLoginAdmin'],
+                               'POST' => [AuthController::class, 'procesarLoginAdmin']],
     // Segundo paso: codigo de la aplicacion autenticadora
     '/acceso/verificar'    => ['GET'  => [AuthController::class, 'mostrarVerificacion'],
                                'POST' => [AuthController::class, 'procesarVerificacion']],
-    // Direccion antigua: se conserva redirigiendo, para no romper enlaces guardados
+    // Direcciones antiguas: se conservan redirigiendo a la portada, para no
+    // romper los enlaces que la gente ya tenga guardados
+    '/acceso'              => ['GET'  => [AuthController::class, 'redirigirAcceso']],
     '/login'               => ['GET'  => [AuthController::class, 'redirigirAcceso']],
     '/logout'              => ['GET'  => [AuthController::class, 'logout']],
     '/solicitar-clave'     => ['POST' => [AuthController::class, 'solicitarClave']],
@@ -85,6 +90,10 @@ $rutas = [
     '/docente/asistencia/devolver' => ['POST' => [DocenteController::class, 'devolverAClase']],
     '/docente/asistencia/aprobar'  => ['POST' => [DocenteController::class, 'aprobarAsistencia']],
     '/docente/asistencia/desbloquear' => ['POST' => [DocenteController::class, 'levantarBloqueo']],
+    // Justificantes: el respaldo de una falta o de una salida
+    '/docente/justificar'          => ['POST' => [DocenteController::class, 'justificar']],
+    '/docente/justificar/quitar'   => ['POST' => [DocenteController::class, 'quitarJustificacion']],
+    '/docente/justificante'        => ['GET'  => [DocenteController::class, 'verJustificante']],
     '/docente/perfil'              => ['GET'  => [DocenteController::class, 'perfil']],
     '/docente/perfil/2fa/preparar' => ['POST' => [DocenteController::class, 'prepararTotp']],
     '/docente/perfil/2fa/activar'  => ['POST' => [DocenteController::class, 'confirmarTotp']],
@@ -130,6 +139,15 @@ $rutas = [
     '/admin/solicitudes/atender'   => ['POST' => [AdminController::class, 'atenderSolicitud']],
     '/admin/solicitudes/rechazar'  => ['POST' => [AdminController::class, 'rechazarSolicitud']],
     '/api/solicitudes/pendientes'  => ['GET'  => [AdminController::class, 'apiPendientes']],
+
+    // --- Periodo academico: lo primero que elige el administrador ---
+    '/admin/periodo'                  => ['GET'  => [AdminController::class, 'periodo']],
+    '/admin/periodo/elegir'           => ['POST' => [AdminController::class, 'elegirPeriodo']],
+    '/admin/periodo/crear'            => ['POST' => [AdminController::class, 'crearPeriodo']],
+    '/admin/periodo/actualizar'       => ['POST' => [AdminController::class, 'actualizarPeriodo']],
+    '/admin/periodo/copiar-materias'  => ['POST' => [AdminController::class, 'copiarMaterias']],
+    '/admin/carreras/crear'           => ['POST' => [AdminController::class, 'crearCarrera']],
+    '/admin/carreras/actualizar'      => ['POST' => [AdminController::class, 'actualizarCarrera']],
 
     // --- Gestion academica: solo el administrador ---
     '/admin/materias'                 => ['GET'  => [AdminController::class, 'materias']],

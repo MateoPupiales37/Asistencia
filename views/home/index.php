@@ -2,9 +2,17 @@
 /**
  * Portada: puerta de entrada del sistema.
  *
- * Separa desde el primer clic los dos caminos, que no tienen nada que ver
- * entre sí: el estudiante va a un formulario público sin cuenta, y el
- * personal va a un acceso con contraseña y verificación en dos pasos.
+ * Separa desde el primer clic los TRES caminos, que no tienen nada que ver
+ * entre sí:
+ *
+ *   Estudiante -> formulario público, sin cuenta ni contraseña.
+ *   Docente    -> acceso con contraseña y verificación en dos pasos.
+ *   Administración -> el mismo acceso, pero a su propio panel.
+ *
+ * Docente y administración estaban antes detrás de una sola entrada. Al
+ * separarlas, cada quien sabe desde el principio a dónde va y el sistema
+ * puede decir con claridad "esta entrada no es la tuya" en vez de dejar que
+ * el rol decida en silencio a qué panel se cae.
  *
  * Aquí no se menciona el formato del correo institucional ni ningún dato de
  * las cuentas: esa información solo le sirve a quien intenta entrar sin
@@ -100,7 +108,12 @@ foreach ($nodos as $a => $na) {
         </p>
     </div>
 
-    <!-- Barra inferior: los dos caminos de entrada -->
+    <!-- Barra inferior: los tres caminos de entrada -->
+    <!--
+        Tres puertas y no una sola con roles dentro. Quien llega sabe quien es,
+        y decirlo desde el primer clic evita el caso mas comun de soporte: el
+        estudiante intentando entrar con "usuario y contraseña" que nunca tuvo.
+    -->
     <nav class="portada-puertas" aria-label="Elige cómo entrar">
         <a href="<?= $base ?>/asistencia" class="puerta puerta-estudiante">
             <span class="puerta-icono" aria-hidden="true">
@@ -113,13 +126,24 @@ foreach ($nodos as $a => $na) {
             <span class="puerta-flecha" aria-hidden="true">&rarr;</span>
         </a>
 
-        <a href="<?= $base ?>/acceso" class="puerta puerta-personal">
+        <a href="<?= $base ?>/acceso/docente" class="puerta puerta-docente">
             <span class="puerta-icono" aria-hidden="true">
-                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1.1 2.7 2.5 6 2.5s6-1.4 6-2.5v-5"/></svg>
             </span>
             <span class="puerta-texto">
                 <strong>DOCENTES</strong>
-                <small>Acceso institucional y administración</small>
+                <small>Abre tu clase y pasa lista</small>
+            </span>
+            <span class="puerta-flecha" aria-hidden="true">&rarr;</span>
+        </a>
+
+        <a href="<?= $base ?>/acceso/admin" class="puerta puerta-admin">
+            <span class="puerta-icono" aria-hidden="true">
+                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>
+            </span>
+            <span class="puerta-texto">
+                <strong>ADMINISTRACIÓN</strong>
+                <small>Supervisión y gestión académica</small>
             </span>
             <span class="puerta-flecha" aria-hidden="true">&rarr;</span>
         </a>

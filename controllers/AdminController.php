@@ -9,6 +9,8 @@ require_once dirname(__DIR__) . '/models/Estudiante.php';
 require_once dirname(__DIR__) . '/models/Asistencia.php';
 require_once dirname(__DIR__) . '/models/Catalogo.php';
 require_once dirname(__DIR__) . '/models/Semestre.php';
+require_once dirname(__DIR__) . '/models/Periodo.php';
+require_once dirname(__DIR__) . '/models/Carrera.php';
 require_once dirname(__DIR__) . '/models/Matricula.php';
 require_once dirname(__DIR__) . '/models/SolicitudClave.php';
 require_once dirname(__DIR__) . '/config/app.php';
@@ -41,9 +43,10 @@ class AdminController extends BaseController
         $this->vista('admin.index', [
             'base'            => self::obtenerRutaBase(),
             'adminNombre'     => $_SESSION['usuario_nombre'] ?? 'Administrador',
+            'periodo'         => $this->periodoActual(),
             'totalDocentes'   => Usuario::contarPorRol('docente'),
             'totalEstudiantes'=> Estudiante::contar(),
-            'totalMaterias'   => Materia::contar(),
+            'totalMaterias'   => Materia::contar($this->idPeriodoActual()),
             'totalCursos'     => Curso::contarTotal(),
             'totalClases'     => Sesion::contarTotal(),
             'clasesHoy'       => Sesion::contarHoy(),
@@ -219,7 +222,7 @@ class AdminController extends BaseController
         // la escribio el administrador y es la que el docente tiene que usar;
         // por eso el mensaje le pide cambiarla al entrar.
         $nombre  = Usuario::nombreCompleto($usuario);
-        $entrada = App::urlPublica('/acceso');
+        $entrada = App::urlPublica(($usuario['rol'] ?? '') === 'admin' ? '/acceso/admin' : '/acceso/docente');
 
         $texto = "Hola {$nombre}, soy del " . App::SIGLA . ".\n\n"
                . "Se restableció tu contraseña del sistema de asistencia.\n\n"
@@ -659,7 +662,13 @@ class AdminController extends BaseController
 
         // A cada materia se le adjuntan los cursos que la dictan, para que el
         // administrador vea de un vistazo quien la tiene a cargo
-        $materias = Materia::listarConUso();
+        // Solo las materias del periodo con el que el administrador esta
+        // trabajando: mezclar las del ciclo anterior con las del actual es
+        // justamente lo que este filtro evita.
+        $periodo   = $this->periodoActual();
+        $periodoId = $periodo ? (int)$periodo['id'] : null;
+
+        $materias = Materia::listarConUso($periodoId);
         foreach ($materias as &$materia) {
             $materia['cursos']     = Curso::listarPorMateria((int)$materia['id']);
             $materia['archivados'] = Curso::listarArchivadosPorMateria((int)$materia['id']);
@@ -671,6 +680,9 @@ class AdminController extends BaseController
             'materias'  => $materias,
             'docentes'  => Usuario::listarDocentes(),
             'semestres' => Semestre::listar(false),
+            'carreras'  => Carrera::listar(false),
+            'periodo'   => $periodo,
+            'periodos'  => Periodo::listar(),
             'ambientes' => Catalogo::AMBIENTES,
             'mensaje'   => $mensaje,
             'error'     => $error,
@@ -685,32 +697,39 @@ class AdminController extends BaseController
         $this->verificarAdmin();
         $this->verificarCsrf('/admin/materias');
 
-        $nombre = $this->limpiar($_POST['nombre'] ?? '');
-        $codigo = strtoupper($this->limpiar($_POST['codigo'] ?? ''));
+        $nombre    = $this->limpiar($_POST['nombre'] ?? '');
+        $codigo    = strtoupper($this->limpiar($_POST['codigo'] ?? ''));
+        $semestre  = trim($_POST['semestre'] ?? '');
+        $carreraId = filter_var($_POST['carrera_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
 
-        if (mb_strlen($nombre) < 3 || mb_strlen($nombre) > 120) {
-            $this->redirigirConError('El nombre de la materia debe tener entre 3 y 120 caracteres.', '/admin/materias');
+        // El periodo no se elige en el formulario: es aquel con el que el
+        // administrador esta trabajando. Pedirlo dos veces solo abriria la
+        // puerta a crear la materia en un ciclo distinto del que se ve en
+        // pantalla, que es un error dificil de notar despues.
+        $periodo = $this->periodoActual();
+
+        if ($periodo === null) {
+            $this->redirigirConError('Primero elige un periodo académico.', '/admin/periodo');
         }
 
-        // Si el admin no escribio codigo, se propone uno a partir del nombre
-        if ($codigo === '') {
-            $codigo = Materia::sugerirCodigo($nombre);
-        }
+        [$nombre, $codigo] = $this->validarDatosMateria($nombre, $codigo, $semestre, $carreraId);
 
-        if (!preg_match('/^[A-Z0-9-]{2,20}$/', $codigo)) {
-            $this->redirigirConError('El código debe tener entre 2 y 20 caracteres: letras, números o guiones.', '/admin/materias');
-        }
-
-        $resultado = Materia::crear($codigo, $nombre);
+        $resultado = Materia::crear($codigo, $nombre, $semestre, $carreraId, (int)$periodo['id']);
 
         if ($resultado === 'duplicada') {
-            $this->redirigirConError("Ya existe una materia con el nombre \"{$nombre}\" o el código \"{$codigo}\".", '/admin/materias');
+            $this->redirigirConError(
+                "Ya existe \"{$nombre}\" en {$semestre} para este periodo, o el código \"{$codigo}\" ya está en uso.",
+                '/admin/materias'
+            );
         }
         if ($resultado !== 'ok') {
             $this->redirigirConError('No se pudo crear la materia.', '/admin/materias');
         }
 
-        $this->redirigirConMensaje("Materia \"{$nombre}\" creada. Ahora asígnale un docente.", '/admin/materias');
+        $this->redirigirConMensaje(
+            "Materia \"{$nombre}\" creada en {$semestre}. Ahora asígnale un docente.",
+            '/admin/materias'
+        );
     }
 
     public function actualizarMateria(): void
@@ -718,25 +737,30 @@ class AdminController extends BaseController
         $this->verificarAdmin();
         $this->verificarCsrf('/admin/materias');
 
-        $id     = filter_var($_POST['id'] ?? null, FILTER_VALIDATE_INT);
-        $nombre = $this->limpiar($_POST['nombre'] ?? '');
-        $codigo = strtoupper($this->limpiar($_POST['codigo'] ?? ''));
-        $activa = ((string)($_POST['activa'] ?? '1') === '0') ? 0 : 1;
+        $id        = filter_var($_POST['id'] ?? null, FILTER_VALIDATE_INT);
+        $nombre    = $this->limpiar($_POST['nombre'] ?? '');
+        $codigo    = strtoupper($this->limpiar($_POST['codigo'] ?? ''));
+        $semestre  = trim($_POST['semestre'] ?? '');
+        $carreraId = filter_var($_POST['carrera_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
+        $activa    = ((string)($_POST['activa'] ?? '1') === '0') ? 0 : 1;
 
-        if (!$id || !Materia::buscarPorId($id)) {
+        $materia = $id ? Materia::buscarPorId($id) : null;
+
+        if (!$materia) {
             $this->redirigirConError('Esa materia ya no existe.', '/admin/materias');
         }
-        if (mb_strlen($nombre) < 3 || mb_strlen($nombre) > 120) {
-            $this->redirigirConError('El nombre de la materia debe tener entre 3 y 120 caracteres.', '/admin/materias');
-        }
-        if (!preg_match('/^[A-Z0-9-]{2,20}$/', $codigo)) {
-            $this->redirigirConError('El código debe tener entre 2 y 20 caracteres: letras, números o guiones.', '/admin/materias');
-        }
 
-        $resultado = Materia::actualizar($id, $codigo, $nombre, $activa);
+        [$nombre, $codigo] = $this->validarDatosMateria($nombre, $codigo, $semestre, $carreraId);
+
+        // El periodo de una materia no se cambia desde aqui: mover una materia
+        // de ciclo se llevaria consigo las clases ya dictadas y descuadraria
+        // los dos periodos a la vez. Para el ciclo siguiente se copia la malla.
+        $resultado = Materia::actualizar(
+            $id, $codigo, $nombre, $semestre, $carreraId, (int)$materia['periodo_id'], $activa
+        );
 
         if ($resultado === 'duplicada') {
-            $this->redirigirConError('Ese nombre o código ya pertenece a otra materia.', '/admin/materias');
+            $this->redirigirConError('Ese nombre en ese semestre, o ese código, ya pertenece a otra materia.', '/admin/materias');
         }
         if ($resultado !== 'ok') {
             $this->redirigirConError('No se pudo actualizar la materia.', '/admin/materias');
@@ -776,9 +800,13 @@ class AdminController extends BaseController
 
     /**
      * Asignar un docente a una materia es, en la practica, crear el CURSO:
-     * la materia mas el docente, el ambiente y el semestre.
-     * Ese curso es despues el que el docente usa para matricular alumnos y
-     * abrir clases.
+     * la materia mas el docente y el ambiente. Ese curso es despues el que el
+     * docente usa para matricular alumnos y abrir clases.
+     *
+     * El semestre NO se pide aqui: la materia ya nace con el suyo, junto con
+     * su carrera y su periodo. Antes se elegia en este formulario y se podia
+     * asignar "Programacion Web de Tercero" a un Cuarto Semestre por un
+     * descuido, dejando dos filas de la misma materia en semestres distintos.
      */
     public function asignarDocente(): void
     {
@@ -788,13 +816,15 @@ class AdminController extends BaseController
         $materiaId = filter_var($_POST['materia_id'] ?? null, FILTER_VALIDATE_INT);
         $docenteId = filter_var($_POST['docente_id'] ?? null, FILTER_VALIDATE_INT);
         $ambiente  = trim($_POST['ambiente'] ?? '');
-        $semestre  = trim($_POST['semestre'] ?? '');
 
-        if (!$materiaId || !Materia::existe($materiaId)) {
+        $materia = $materiaId ? Materia::buscarPorId($materiaId) : null;
+
+        if (!$materia || (int)$materia['activa'] === 0) {
             $this->redirigirConError('Selecciona una materia activa.', '/admin/materias');
         }
 
-        $docente = $docenteId ? Usuario::buscarPorId($docenteId) : null;
+        $semestre = $materia['semestre'];
+        $docente  = $docenteId ? Usuario::buscarPorId($docenteId) : null;
 
         if (!$docente) {
             $this->redirigirConError('Selecciona un docente de la lista.', '/admin/materias');
@@ -805,21 +835,25 @@ class AdminController extends BaseController
         if (!Catalogo::esAmbienteValido($ambiente)) {
             $this->redirigirConError('Selecciona un ambiente válido.', '/admin/materias');
         }
-        if (!Catalogo::esSemestreValido($semestre)) {
-            $this->redirigirConError('Selecciona un semestre válido.', '/admin/materias');
-        }
-        // REGLA ACADEMICA: una materia en un semestre la dicta UN solo docente.
-        // El mismo docente si puede tenerla en varios ambientes (teoria en
-        // Aula y practica en Laboratorio), pero dos docentes distintos en la
-        // misma materia y semestre significaria dos listas de clase paralelas
-        // para el mismo grupo, y las asistencias dejarian de cuadrar.
-        $ocupada = Curso::docenteDeMateriaEnSemestre($materiaId, $semestre);
+
+        // REGLA ACADEMICA: una materia pertenece a UN solo docente.
+        //
+        // Como la materia ya trae dentro su semestre, su carrera y su periodo,
+        // la regla no necesita mas condiciones: "Programacion de Aplicaciones"
+        // de Tercero y "Programacion de Aplicaciones 2" de Cuarto son materias
+        // distintas y cada una puede tener su propio docente. Lo que no puede
+        // pasar es que la MISMA materia tenga dos, porque serian dos listas de
+        // clase paralelas para el mismo grupo y las asistencias no cuadrarian.
+        //
+        // El mismo docente si puede repetirla en varios ambientes: la teoria
+        // en el Aula y la practica en el Laboratorio.
+        $ocupada = Curso::docenteDeMateria($materiaId);
 
         if ($ocupada !== null && (int)$ocupada['docente_id'] !== $docenteId) {
             $this->redirigirConError(
-                'Esa materia en ' . $semestre . ' ya la dicta '
+                '"' . $materia['nombre'] . '" de ' . $semestre . ' ya la dicta '
                 . trim($ocupada['docente_nombre'] . ' ' . $ocupada['docente_apellido'])
-                . '. Una materia solo puede tener un docente por semestre: retira primero la asignación actual.',
+                . '. Una materia solo puede tener un docente: retira primero la asignación actual.',
                 '/admin/materias'
             );
         }
@@ -828,7 +862,7 @@ class AdminController extends BaseController
 
         if ($resultado === 'duplicado') {
             $this->redirigirConError(
-                'Ese docente ya tiene esta materia en el mismo ambiente y semestre.',
+                'Ese docente ya tiene esta materia en el ambiente ' . $ambiente . '.',
                 '/admin/materias'
             );
         }
@@ -838,7 +872,8 @@ class AdminController extends BaseController
 
         $nombreDocente = Usuario::nombreCompleto($docente);
         $this->redirigirConMensaje(
-            "{$nombreDocente} quedó asignado. Ya puede matricular estudiantes y abrir clases.",
+            "{$nombreDocente} quedó asignado a \"{$materia['nombre']}\" ({$semestre}). "
+            . 'Ya puede matricular estudiantes y abrir clases.',
             '/admin/materias'
         );
     }
@@ -960,6 +995,289 @@ class AdminController extends BaseController
         }
 
         $this->redirigirConMensaje('Semestre eliminado.', '/admin/materias');
+    }
+
+    // ==================================================================
+    // PERIODO ACADEMICO
+    //
+    // Es lo primero que el administrador elige al entrar. Todo lo que ve
+    // despues (materias, asignaciones, reportes) queda acotado a ese ciclo,
+    // de modo que las clases del periodo anterior se conservan pero no se
+    // mezclan con las nuevas.
+    // ==================================================================
+
+    /**
+     * Pantalla de eleccion de periodo.
+     *
+     * Es la unica accion del panel que NO exige tener un periodo elegido:
+     * exigirlo aqui provocaria un bucle de redirecciones contra si misma.
+     */
+    public function periodo(): void
+    {
+        $this->verificarAdmin(false);
+
+        [$mensaje, $error] = $this->obtenerFlash();
+
+        self::abrirSesion();
+
+        $this->vista('admin.periodo', [
+            'base'      => self::obtenerRutaBase(),
+            'periodos'  => Periodo::listarConUso(),
+            'elegido'   => (int)($_SESSION['periodo_id'] ?? 0),
+            'sugerido'  => Periodo::sugerirNombre(date('Y-m-d')),
+            'carreras'  => Carrera::listarConUso(),
+            'mensaje'   => $mensaje,
+            'error'     => $error,
+            'csrf'      => self::tokenCsrf()
+        ]);
+    }
+
+    /** Fija el periodo con el que se va a trabajar durante la sesion */
+    public function elegirPeriodo(): void
+    {
+        $this->verificarAdmin(false);
+        $this->verificarCsrf('/admin/periodo');
+
+        $id      = filter_var($_POST['periodo_id'] ?? null, FILTER_VALIDATE_INT);
+        $periodo = $id ? Periodo::buscarPorId($id) : null;
+
+        if (!$periodo) {
+            $this->redirigirConError('Selecciona un periodo de la lista.', '/admin/periodo');
+        }
+
+        self::abrirSesion();
+        $_SESSION['periodo_id']     = (int)$periodo['id'];
+        $_SESSION['periodo_nombre'] = $periodo['nombre'];
+
+        $aviso = 'Trabajando en el periodo ' . $periodo['nombre'] . '.';
+
+        if ((int)$periodo['activo'] === 0) {
+            $aviso .= ' Es un periodo cerrado: se muestra para consulta.';
+        }
+
+        $this->redirigirConMensaje($aviso, '/admin');
+    }
+
+    public function crearPeriodo(): void
+    {
+        $this->verificarAdmin(false);
+        $this->verificarCsrf('/admin/periodo');
+
+        $nombre = $this->limpiar($_POST['nombre'] ?? '');
+        $inicio = $this->fechaValida($_POST['fecha_inicio'] ?? '');
+        $fin    = $this->fechaValida($_POST['fecha_fin'] ?? '');
+
+        if (mb_strlen($nombre) < 3 || mb_strlen($nombre) > 40) {
+            $this->redirigirConError('El nombre del periodo debe tener entre 3 y 40 caracteres.', '/admin/periodo');
+        }
+        if ($inicio === null || $fin === null) {
+            $this->redirigirConError('Escribe las dos fechas del periodo.', '/admin/periodo');
+        }
+
+        $resultado = Periodo::crear($nombre, $inicio, $fin);
+
+        if ($resultado === 'fechas') {
+            $this->redirigirConError('La fecha de inicio debe ser anterior a la de cierre.', '/admin/periodo');
+        }
+        if ($resultado === 'duplicado') {
+            $this->redirigirConError("Ya existe un periodo llamado \"{$nombre}\".", '/admin/periodo');
+        }
+        if ($resultado !== 'ok') {
+            $this->redirigirConError('No se pudo crear el periodo.', '/admin/periodo');
+        }
+
+        $this->redirigirConMensaje(
+            "Periodo \"{$nombre}\" creado. Elígelo para empezar a cargar su malla de materias.",
+            '/admin/periodo'
+        );
+    }
+
+    public function actualizarPeriodo(): void
+    {
+        $this->verificarAdmin(false);
+        $this->verificarCsrf('/admin/periodo');
+
+        $id     = filter_var($_POST['id'] ?? null, FILTER_VALIDATE_INT);
+        $nombre = $this->limpiar($_POST['nombre'] ?? '');
+        $inicio = $this->fechaValida($_POST['fecha_inicio'] ?? '');
+        $fin    = $this->fechaValida($_POST['fecha_fin'] ?? '');
+        $activo = ((string)($_POST['activo'] ?? '1') === '0') ? 0 : 1;
+
+        if (!$id || !Periodo::buscarPorId($id)) {
+            $this->redirigirConError('Ese periodo ya no existe.', '/admin/periodo');
+        }
+        if (mb_strlen($nombre) < 3 || mb_strlen($nombre) > 40) {
+            $this->redirigirConError('El nombre del periodo debe tener entre 3 y 40 caracteres.', '/admin/periodo');
+        }
+        if ($inicio === null || $fin === null) {
+            $this->redirigirConError('Escribe las dos fechas del periodo.', '/admin/periodo');
+        }
+
+        $resultado = Periodo::actualizar($id, $nombre, $inicio, $fin, $activo);
+
+        if ($resultado === 'fechas') {
+            $this->redirigirConError('La fecha de inicio debe ser anterior a la de cierre.', '/admin/periodo');
+        }
+        if ($resultado === 'duplicado') {
+            $this->redirigirConError('Ese nombre ya pertenece a otro periodo.', '/admin/periodo');
+        }
+        if ($resultado !== 'ok') {
+            $this->redirigirConError('No se pudo actualizar el periodo.', '/admin/periodo');
+        }
+
+        $this->redirigirConMensaje('Periodo actualizado.', '/admin/periodo');
+    }
+
+    /**
+     * Copia la malla de materias de un periodo al siguiente.
+     *
+     * Al abrir un ciclo la malla es practicamente la misma que la del
+     * anterior, y volver a escribirla materia por materia es justo donde
+     * aparecen los errores de tipeo. Se copian sin docente: quien dicta cada
+     * materia se decide en cada periodo.
+     */
+    public function copiarMaterias(): void
+    {
+        $this->verificarAdmin(false);
+        $this->verificarCsrf('/admin/periodo');
+
+        $origenId  = filter_var($_POST['origen_id'] ?? null, FILTER_VALIDATE_INT);
+        $destinoId = filter_var($_POST['destino_id'] ?? null, FILTER_VALIDATE_INT);
+
+        $origen  = $origenId ? Periodo::buscarPorId($origenId) : null;
+        $destino = $destinoId ? Periodo::buscarPorId($destinoId) : null;
+
+        if (!$origen || !$destino) {
+            $this->redirigirConError('Selecciona el periodo de origen y el de destino.', '/admin/periodo');
+        }
+        if ($origenId === $destinoId) {
+            $this->redirigirConError('El periodo de origen y el de destino no pueden ser el mismo.', '/admin/periodo');
+        }
+
+        $copiadas = Materia::copiarPeriodo($origenId, $destinoId);
+
+        if ($copiadas === 0) {
+            $this->redirigirConError(
+                'No se copió ninguna materia: ' . $destino['nombre'] . ' ya tiene las de ' . $origen['nombre'] . '.',
+                '/admin/periodo'
+            );
+        }
+
+        $this->redirigirConMensaje(
+            "Se copiaron {$copiadas} materia(s) de {$origen['nombre']} a {$destino['nombre']}. "
+            . 'Ahora asigna el docente de cada una.',
+            '/admin/periodo'
+        );
+    }
+
+    // ==================================================================
+    // CARRERAS
+    // ==================================================================
+
+    public function crearCarrera(): void
+    {
+        $this->verificarAdmin(false);
+        $this->verificarCsrf('/admin/periodo');
+
+        $nombre = $this->limpiar($_POST['nombre'] ?? '');
+        $codigo = strtoupper($this->limpiar($_POST['codigo'] ?? ''));
+
+        if (mb_strlen($nombre) < 3 || mb_strlen($nombre) > 120) {
+            $this->redirigirConError('El nombre de la carrera debe tener entre 3 y 120 caracteres.', '/admin/periodo');
+        }
+
+        if ($codigo === '') {
+            $codigo = Carrera::sugerirCodigo($nombre);
+        }
+
+        if (!preg_match('/^[A-Z0-9-]{2,20}$/', $codigo)) {
+            $this->redirigirConError('El código de la carrera debe tener entre 2 y 20 caracteres.', '/admin/periodo');
+        }
+
+        $resultado = Carrera::crear($codigo, $nombre);
+
+        if ($resultado === 'duplicada') {
+            $this->redirigirConError("Ya existe una carrera con ese nombre o ese código.", '/admin/periodo');
+        }
+        if ($resultado !== 'ok') {
+            $this->redirigirConError('No se pudo crear la carrera.', '/admin/periodo');
+        }
+
+        $this->redirigirConMensaje("Carrera \"{$nombre}\" creada.", '/admin/periodo');
+    }
+
+    public function actualizarCarrera(): void
+    {
+        $this->verificarAdmin(false);
+        $this->verificarCsrf('/admin/periodo');
+
+        $id     = filter_var($_POST['id'] ?? null, FILTER_VALIDATE_INT);
+        $nombre = $this->limpiar($_POST['nombre'] ?? '');
+        $codigo = strtoupper($this->limpiar($_POST['codigo'] ?? ''));
+        $activa = ((string)($_POST['activa'] ?? '1') === '0') ? 0 : 1;
+
+        if (!$id || !Carrera::buscarPorId($id)) {
+            $this->redirigirConError('Esa carrera ya no existe.', '/admin/periodo');
+        }
+        if (mb_strlen($nombre) < 3 || mb_strlen($nombre) > 120) {
+            $this->redirigirConError('El nombre de la carrera debe tener entre 3 y 120 caracteres.', '/admin/periodo');
+        }
+        if (!preg_match('/^[A-Z0-9-]{2,20}$/', $codigo)) {
+            $this->redirigirConError('El código de la carrera debe tener entre 2 y 20 caracteres.', '/admin/periodo');
+        }
+
+        $resultado = Carrera::actualizar($id, $codigo, $nombre, $activa);
+
+        if ($resultado === 'duplicada') {
+            $this->redirigirConError('Ese nombre o código ya pertenece a otra carrera.', '/admin/periodo');
+        }
+        if ($resultado !== 'ok') {
+            $this->redirigirConError('No se pudo actualizar la carrera.', '/admin/periodo');
+        }
+
+        $this->redirigirConMensaje('Carrera actualizada.', '/admin/periodo');
+    }
+
+    // ==================================================================
+
+    /**
+     * Comprobaciones comunes al crear y al editar una materia.
+     *
+     * @return array{0:string,1:string} El nombre y el codigo ya normalizados
+     */
+    private function validarDatosMateria(string $nombre, string $codigo, string $semestre, ?int $carreraId): array
+    {
+        if (mb_strlen($nombre) < 3 || mb_strlen($nombre) > 120) {
+            $this->redirigirConError('El nombre de la materia debe tener entre 3 y 120 caracteres.', '/admin/materias');
+        }
+
+        if (!Catalogo::esSemestreValido($semestre)) {
+            $this->redirigirConError('Selecciona el semestre al que pertenece la materia.', '/admin/materias');
+        }
+
+        if (!Carrera::existe($carreraId)) {
+            $this->redirigirConError('Selecciona la carrera a la que pertenece la materia.', '/admin/materias');
+        }
+
+        // Si el admin no escribio codigo, se propone uno a partir del nombre
+        if ($codigo === '') {
+            $codigo = Materia::sugerirCodigo($nombre);
+        }
+
+        if (!preg_match('/^[A-Z0-9-]{2,20}$/', $codigo)) {
+            $this->redirigirConError('El código debe tener entre 2 y 20 caracteres: letras, números o guiones.', '/admin/materias');
+        }
+
+        return [$nombre, $codigo];
+    }
+
+    /** Acepta una fecha en formato AAAA-MM-DD y rechaza cualquier otra cosa */
+    private function fechaValida(string $valor): ?string
+    {
+        $valor = trim($valor);
+        $fecha = DateTime::createFromFormat('Y-m-d', $valor);
+
+        return ($fecha && $fecha->format('Y-m-d') === $valor) ? $valor : null;
     }
 
     // ==================================================================

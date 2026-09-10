@@ -1,16 +1,22 @@
 <?php
 /**
- * Gestion academica del administrador.
+ * Gestión académica del administrador.
  *
- * Aqui el administrador hace las dos cosas que antes no se podian hacer desde
- * el sistema y solo existian escritas a mano en el script SQL:
+ * Aquí el administrador hace las dos cosas que el docente no puede hacer:
  *
- *   1. Crear materias del catalogo institucional.
- *   2. Asignar QUE DOCENTE dicta cada materia, en que ambiente, semestre y
- *      semestre. Esa asignacion es lo que crea el curso.
+ *   1. Crear las materias del catálogo institucional. Cada materia nace
+ *      ubicada: pertenece a una CARRERA, se dicta en un SEMESTRE y ocurre
+ *      dentro del PERÍODO con el que se está trabajando.
+ *   2. Asignar QUÉ DOCENTE dicta cada materia y en qué ambiente. Esa
+ *      asignación es lo que crea el curso.
  *
- * A partir de ahi, el docente se encarga de matricular a sus estudiantes en
- * los cursos que le asignaron. El administrador no matricula alumnos.
+ * El semestre ya no se elige al asignar el docente: viene dentro de la
+ * materia. Antes se pedía en los dos sitios y bastaba un descuido para
+ * asignar "Programación Web de Tercero" a un Cuarto Semestre, dejando dos
+ * filas de la misma materia en semestres distintos.
+ *
+ * A partir de ahí, el docente matricula a sus estudiantes en los cursos que
+ * le asignaron. El administrador no matricula alumnos.
  */
 
 $titulo = 'Materias y Asignaciones - ISTPET';
@@ -25,6 +31,23 @@ foreach ($materias as $m) {
         $sinDocente++;
     }
 }
+
+// Las materias se agrupan por semestre: es como el instituto lee su malla,
+// y con cuatro semestres la lista plana obligaba a buscar a ojo
+$porSemestre = [];
+foreach ($materias as $m) {
+    $porSemestre[$m['semestre'] ?: 'Sin semestre'][] = $m;
+}
+
+// Se respeta el orden oficial de los semestres, no el alfabético
+$ordenSemestres = array_column($semestres, 'nombre');
+uksort($porSemestre, static function ($a, $b) use ($ordenSemestres) {
+    $ia = array_search($a, $ordenSemestres, true);
+    $ib = array_search($b, $ordenSemestres, true);
+    return ($ia === false ? 99 : $ia) <=> ($ib === false ? 99 : $ib);
+});
+
+$carrerasActivas = array_values(array_filter($carreras, static fn($c) => (int)$c['activa'] === 1));
 ?>
 
 <nav class="breadcrumb">
@@ -43,7 +66,7 @@ foreach ($materias as $m) {
     <div class="acciones-cabecera">
         <a href="<?= $base ?>/admin" class="btn btn-back">&larr; Supervisión</a>
         <button type="button" class="btn btn-outline" onclick="abrirModal('modalSemestres')">Semestres</button>
-        <button type="button" class="btn btn-primary" onclick="abrirModal('modalMateria')">+ Nueva Materia</button>
+        <button type="button" class="btn btn-primary" onclick="nuevaMateria()">+ Nueva Materia</button>
     </div>
 </div>
 
@@ -54,11 +77,31 @@ foreach ($materias as $m) {
     <div class="alert alert-error"><span><?= htmlspecialchars($error) ?></span></div>
 <?php endif; ?>
 
+<!-- Recordatorio del período: todo lo de esta pantalla cuelga de él -->
+<div class="periodo-barra">
+    <div>
+        <span class="periodo-barra-etiqueta">Período académico</span>
+        <strong><?= htmlspecialchars($periodo['nombre'] ?? 'Sin período') ?></strong>
+        <?php if (!empty($periodo)): ?>
+            <span class="text-muted">
+                (<?= date('d/m/Y', strtotime($periodo['fecha_inicio'])) ?>
+                al <?= date('d/m/Y', strtotime($periodo['fecha_fin'])) ?>)
+            </span>
+        <?php endif; ?>
+    </div>
+    <a href="<?= $base ?>/admin/periodo" class="btn btn-sm btn-outline">Cambiar período</a>
+</div>
+
 <div class="alert alert-info">
     <span>
-        <strong>Cómo funciona:</strong> tú creas la materia y le asignas un docente.
-        Esa asignación genera el curso. Después, cada docente entra a su panel y
-        matricula ahí a sus propios estudiantes.
+        <strong>Cómo funciona:</strong> tú creas la materia indicando su carrera y su
+        semestre, y le asignas un docente. Esa asignación genera el curso. Después,
+        cada docente entra a su panel y matricula ahí a sus propios estudiantes.
+        <br>
+        <strong>Una materia tiene un solo docente.</strong> Como el semestre y el
+        período ya vienen dentro de la materia, "Programación de Aplicaciones" de
+        Tercero y "Programación de Aplicaciones 2" de Cuarto son materias distintas
+        y cada una puede tener el suyo.
         <?php if ($sinDocente > 0): ?>
             <br>Hay <strong><?= $sinDocente ?></strong> materia(s) activa(s) sin ningún docente asignado:
             mientras no tengan uno, nadie puede abrir clases de esa materia.
@@ -70,143 +113,126 @@ foreach ($materias as $m) {
     <?php if (empty($materias)): ?>
         <div class="card">
             <div class="estado-vacio">
-                <p class="estado-vacio-titulo">Todavía no hay materias</p>
-                <p class="text-muted">
-                    Crea la primera con el botón "Nueva Materia". Después podrás
-                    asignarle uno o varios docentes.
+                <p class="estado-vacio-titulo">
+                    Todavía no hay materias en <?= htmlspecialchars($periodo['nombre'] ?? 'este período') ?>
                 </p>
+                <p class="text-muted mb-4">
+                    Crea la primera con el botón "Nueva Materia". Si ya cargaste la
+                    malla en otro período, puedes copiarla desde la pantalla de períodos.
+                </p>
+                <a href="<?= $base ?>/admin/periodo" class="btn btn-outline">Ir a períodos</a>
             </div>
         </div>
     <?php else: ?>
-        <?php foreach ($materias as $m): ?>
-            <?php $inactiva = ((int)$m['activa'] === 0); ?>
-            <div class="card mb-4 <?= $inactiva ? 'materia-archivada' : '' ?>">
+        <?php foreach ($porSemestre as $nombreSemestre => $grupo): ?>
+            <h2 class="grupo-semestre"><?= htmlspecialchars($nombreSemestre) ?></h2>
 
-                <div class="card-header-flex">
-                    <div>
-                        <div class="d-flex align-center gap-2 flex-wrap">
-                            <span class="badge badge-neutral"><?= htmlspecialchars($m['codigo']) ?></span>
-                            <h2 class="card-titulo mb-0"><?= htmlspecialchars($m['nombre']) ?></h2>
-                            <?php if ($inactiva): ?>
-                                <span class="badge badge-danger">ARCHIVADA</span>
-                            <?php endif; ?>
+            <?php foreach ($grupo as $m): ?>
+                <?php
+                    $inactiva = ((int)$m['activa'] === 0);
+                    $tieneDocente = !empty($m['cursos']);
+                ?>
+                <div class="card mb-4 <?= $inactiva ? 'materia-archivada' : '' ?>">
+
+                    <div class="card-header-flex">
+                        <div>
+                            <div class="d-flex align-center gap-2 flex-wrap">
+                                <span class="badge badge-neutral"><?= htmlspecialchars($m['codigo']) ?></span>
+                                <h2 class="card-titulo mb-0"><?= htmlspecialchars($m['nombre']) ?></h2>
+                                <?php if ($inactiva): ?>
+                                    <span class="badge badge-danger">ARCHIVADA</span>
+                                <?php endif; ?>
+                            </div>
+                            <p class="text-muted mt-2" style="font-size:.83rem">
+                                <?= htmlspecialchars($m['carrera'] ?? 'Sin carrera') ?> &bull;
+                                <?= htmlspecialchars($m['semestre']) ?> &bull;
+                                <?= (int)$m['total_cursos'] ?> asignación(es)
+                            </p>
                         </div>
-                        <p class="text-muted mt-2" style="font-size:.83rem">
-                            <?= (int)$m['total_cursos'] ?> asignación(es) &bull;
-                            <?= (int)$m['total_docentes'] ?> docente(s)
-                        </p>
-                    </div>
 
-                    <div class="acciones-fila">
-                        <button type="button" class="btn btn-sm btn-outline"
-                                onclick="editarMateria(<?= (int)$m['id'] ?>, '<?= htmlspecialchars(addslashes($m['codigo']), ENT_QUOTES, 'UTF-8') ?>', '<?= htmlspecialchars(addslashes($m['nombre']), ENT_QUOTES, 'UTF-8') ?>', <?= (int)$m['activa'] ?>)">
-                            Editar
-                        </button>
+                        <div class="acciones-fila">
+                            <button type="button" class="btn btn-sm btn-outline"
+                                    onclick='editarMateria(<?= json_encode([
+                                        "id"      => (int)$m["id"],
+                                        "codigo"  => $m["codigo"],
+                                        "nombre"  => $m["nombre"],
+                                        "semestre"=> $m["semestre"],
+                                        "carrera" => (int)($m["carrera_id"] ?? 0),
+                                        "activa"  => (int)$m["activa"]
+                                    ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>)'>
+                                Editar
+                            </button>
 
-                        <?php if (!$inactiva): ?>
-                            <div class="asignar-rapido">
+                            <?php if (!$inactiva && !$tieneDocente): ?>
                                 <button type="button" class="btn btn-sm btn-dorado"
-                                        onclick="asignar(<?= (int)$m['id'] ?>, '<?= htmlspecialchars(addslashes($m['nombre']), ENT_QUOTES, 'UTF-8') ?>')">
+                                        onclick='asignar(<?= json_encode([
+                                            "id"       => (int)$m["id"],
+                                            "nombre"   => $m["nombre"],
+                                            "semestre" => $m["semestre"]
+                                        ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>)'>
                                     + Asignar docente
                                 </button>
-                                <?php foreach ($semestres as $sem): ?>
-                                    <?php if ((int)$sem['activo'] === 1): ?>
-                                        <button type="button" class="chip-btn"
-                                                title="Asignar un docente a esta materia en <?= htmlspecialchars($sem['nombre'], ENT_QUOTES, 'UTF-8') ?>"
-                                                onclick="asignar(<?= (int)$m['id'] ?>, '<?= htmlspecialchars(addslashes($m['nombre']), ENT_QUOTES, 'UTF-8') ?>', '<?= htmlspecialchars(addslashes($sem['nombre']), ENT_QUOTES, 'UTF-8') ?>')">
-                                            <?= htmlspecialchars(explode(' ', $sem['nombre'])[0]) ?>
-                                        </button>
-                                    <?php endif; ?>
-                                <?php endforeach; ?>
-                            </div>
-                        <?php endif; ?>
+                            <?php elseif (!$inactiva): ?>
+                                <button type="button" class="btn btn-sm btn-outline"
+                                        onclick='asignar(<?= json_encode([
+                                            "id"       => (int)$m["id"],
+                                            "nombre"   => $m["nombre"],
+                                            "semestre" => $m["semestre"]
+                                        ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>)'
+                                        title="El mismo docente puede tenerla en otro ambiente">
+                                    + Otro ambiente
+                                </button>
+                            <?php endif; ?>
 
-                        <form action="<?= $base ?>/admin/materias/estado" method="POST" class="inline"
-                              data-confirmar="<?= $inactiva ? '¿Reactivar esta materia?' : '¿Archivar esta materia? Dejará de aparecer al crear asignaciones, pero su historial se conserva.' ?>">
-                            <input type="hidden" name="csrf_token" value="<?= $tok ?>">
-                            <input type="hidden" name="id" value="<?= (int)$m['id'] ?>">
-                            <input type="hidden" name="activa" value="<?= $inactiva ? 1 : 0 ?>">
-                            <button type="submit" class="btn btn-sm <?= $inactiva ? 'btn-outline' : 'btn-peligro-suave' ?>">
-                                <?= $inactiva ? 'Reactivar' : 'Archivar' ?>
-                            </button>
-                        </form>
+                            <form action="<?= $base ?>/admin/materias/estado" method="POST" class="inline"
+                                  data-confirmar="<?= $inactiva ? '¿Reactivar esta materia?' : '¿Archivar esta materia? Dejará de aparecer al crear asignaciones, pero su historial se conserva.' ?>">
+                                <input type="hidden" name="csrf_token" value="<?= $tok ?>">
+                                <input type="hidden" name="id" value="<?= (int)$m['id'] ?>">
+                                <input type="hidden" name="activa" value="<?= $inactiva ? 1 : 0 ?>">
+                                <button type="submit" class="btn btn-sm <?= $inactiva ? 'btn-outline' : 'btn-peligro-suave' ?>">
+                                    <?= $inactiva ? 'Reactivar' : 'Archivar' ?>
+                                </button>
+                            </form>
+                        </div>
                     </div>
-                </div>
 
-                <?php if (empty($m['cursos'])): ?>
-                    <p class="text-muted" style="font-size:.87rem">
-                        Sin docente asignado todavía.
-                    </p>
-                <?php else: ?>
-                    <div class="table-responsive">
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Docente</th>
-                                    <th>Ambiente</th>
-                                    <th>Semestre</th>
-                                                                        <th>Matriculados</th>
-                                    <th class="text-right">Acción</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($m['cursos'] as $c): ?>
-                                    <tr>
-                                        <td class="font-medium">
-                                            <?= htmlspecialchars(trim($c['docente_nombre'] . ' ' . $c['docente_apellido'])) ?>
-                                        </td>
-                                        <td>
-                                            <span class="curso-ambiente amb-<?= strtolower(str_replace(' ', '-', $c['ambiente'])) ?>">
-                                                <?= htmlspecialchars($c['ambiente']) ?>
-                                            </span>
-                                        </td>
-                                        <td class="text-muted"><?= htmlspecialchars($c['semestre']) ?></td>
-                                        <td class="text-muted"></td>
-                                        <td>
-                                            <span class="badge <?= (int)$c['total_matriculados'] > 0 ? 'badge-success' : 'badge-neutral' ?>">
-                                                <?= (int)$c['total_matriculados'] ?> alumno(s)
-                                            </span>
-                                        </td>
-                                        <td class="text-right">
-                                            <form action="<?= $base ?>/admin/materias/quitar-docente" method="POST" class="inline"
-                                                  data-confirmar="¿Retirar esta asignación? No se borra nada: las clases dictadas se conservan y podrás restaurarla desde &quot;Asignaciones retiradas&quot;.">
-                                                <input type="hidden" name="csrf_token" value="<?= $tok ?>">
-                                                <input type="hidden" name="curso_id" value="<?= (int)$c['id'] ?>">
-                                                <button type="submit" class="btn btn-sm btn-peligro-suave">Retirar</button>
-                                            </form>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php endif; ?>
-
-                <?php if (!empty($m['archivados'])): ?>
-                    <details class="archivados">
-                        <summary class="archivados-titulo">
-                            Asignaciones retiradas (<?= count($m['archivados']) ?>)
-                        </summary>
-                        <p class="text-muted mb-3" style="font-size:.83rem">
-                            No se borraron: las clases que ese docente ya dictó siguen en los reportes.
+                    <?php if (!$tieneDocente): ?>
+                        <p class="text-muted" style="font-size:.87rem">
+                            Sin docente asignado todavía.
                         </p>
+                    <?php else: ?>
                         <div class="table-responsive">
                             <table class="table">
                                 <thead>
-                                    <tr><th>Docente</th><th>Ambiente</th><th>Semestre</th><th class="text-right">Acción</th></tr>
+                                    <tr>
+                                        <th>Docente</th>
+                                        <th>Ambiente</th>
+                                        <th>Matriculados</th>
+                                        <th class="text-right">Acción</th>
+                                    </tr>
                                 </thead>
                                 <tbody>
-                                    <?php foreach ($m['archivados'] as $c): ?>
+                                    <?php foreach ($m['cursos'] as $c): ?>
                                         <tr>
-                                            <td class="text-muted"><?= htmlspecialchars(trim($c['docente_nombre'] . ' ' . $c['docente_apellido'])) ?></td>
-                                            <td class="text-muted"><?= htmlspecialchars($c['ambiente']) ?></td>
-                                            <td class="text-muted"><?= htmlspecialchars($c['semestre']) ?></td>
-                                            <td class="text-muted"></td>
+                                            <td class="font-medium">
+                                                <?= htmlspecialchars(trim($c['docente_nombre'] . ' ' . $c['docente_apellido'])) ?>
+                                            </td>
+                                            <td>
+                                                <span class="curso-ambiente amb-<?= strtolower(str_replace(' ', '-', $c['ambiente'])) ?>">
+                                                    <?= htmlspecialchars($c['ambiente']) ?>
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span class="badge <?= (int)$c['total_matriculados'] > 0 ? 'badge-success' : 'badge-neutral' ?>">
+                                                    <?= (int)$c['total_matriculados'] ?> alumno(s)
+                                                </span>
+                                            </td>
                                             <td class="text-right">
-                                                <form action="<?= $base ?>/admin/materias/restaurar-docente" method="POST" class="inline">
+                                                <form action="<?= $base ?>/admin/materias/quitar-docente" method="POST" class="inline"
+                                                      data-confirmar="¿Retirar esta asignación? No se borra nada: las clases dictadas se conservan y podrás restaurarla desde &quot;Asignaciones retiradas&quot;.">
                                                     <input type="hidden" name="csrf_token" value="<?= $tok ?>">
                                                     <input type="hidden" name="curso_id" value="<?= (int)$c['id'] ?>">
-                                                    <button type="submit" class="btn btn-sm btn-outline">Restaurar</button>
+                                                    <button type="submit" class="btn btn-sm btn-peligro-suave">Retirar</button>
                                                 </form>
                                             </td>
                                         </tr>
@@ -214,9 +240,42 @@ foreach ($materias as $m) {
                                 </tbody>
                             </table>
                         </div>
-                    </details>
-                <?php endif; ?>
-            </div>
+                    <?php endif; ?>
+
+                    <?php if (!empty($m['archivados'])): ?>
+                        <details class="archivados">
+                            <summary class="archivados-titulo">
+                                Asignaciones retiradas (<?= count($m['archivados']) ?>)
+                            </summary>
+                            <p class="text-muted mb-3" style="font-size:.83rem">
+                                No se borraron: las clases que ese docente ya dictó siguen en los reportes.
+                            </p>
+                            <div class="table-responsive">
+                                <table class="table">
+                                    <thead>
+                                        <tr><th>Docente</th><th>Ambiente</th><th class="text-right">Acción</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($m['archivados'] as $c): ?>
+                                            <tr>
+                                                <td class="text-muted"><?= htmlspecialchars(trim($c['docente_nombre'] . ' ' . $c['docente_apellido'])) ?></td>
+                                                <td class="text-muted"><?= htmlspecialchars($c['ambiente']) ?></td>
+                                                <td class="text-right">
+                                                    <form action="<?= $base ?>/admin/materias/restaurar-docente" method="POST" class="inline">
+                                                        <input type="hidden" name="csrf_token" value="<?= $tok ?>">
+                                                        <input type="hidden" name="curso_id" value="<?= (int)$c['id'] ?>">
+                                                        <button type="submit" class="btn btn-sm btn-outline">Restaurar</button>
+                                                    </form>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </details>
+                    <?php endif; ?>
+                </div>
+            <?php endforeach; ?>
         <?php endforeach; ?>
     <?php endif; ?>
 </div>
@@ -229,6 +288,11 @@ foreach ($materias as $m) {
             <button type="button" class="modal-close-btn" onclick="cerrarModal('modalMateria')" aria-label="Cerrar">&times;</button>
         </div>
 
+        <p class="text-muted mb-4" style="font-size:.87rem">
+            Se creará en el período
+            <strong class="text-primary"><?= htmlspecialchars($periodo['nombre'] ?? '—') ?></strong>.
+        </p>
+
         <form action="<?= $base ?>/admin/materias/crear" method="POST" id="formMateria">
             <input type="hidden" name="csrf_token" value="<?= $tok ?>">
             <input type="hidden" name="id" id="materiaId">
@@ -238,6 +302,39 @@ foreach ($materias as $m) {
                 <input type="text" id="materiaNombre" name="nombre" class="form-control"
                        required maxlength="120" placeholder="Ej: Programación de Aplicaciones"
                        oninput="proponerCodigo()">
+            </div>
+
+            <div class="form-fila">
+                <div class="form-group">
+                    <label for="materiaSemestre" class="form-label">Semestre <span class="text-danger">*</span></label>
+                    <select id="materiaSemestre" name="semestre" class="form-select" required>
+                        <option value="">-- Selecciona --</option>
+                        <?php foreach ($semestres as $s): ?>
+                            <?php if ((int)$s['activo'] === 1): ?>
+                                <option value="<?= htmlspecialchars($s['nombre'], ENT_QUOTES, 'UTF-8') ?>">
+                                    <?= htmlspecialchars($s['nombre']) ?>
+                                </option>
+                            <?php endif; ?>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="materiaCarrera" class="form-label">Carrera <span class="text-danger">*</span></label>
+                    <select id="materiaCarrera" name="carrera_id" class="form-select" required>
+                        <?php if (count($carrerasActivas) !== 1): ?>
+                            <option value="">-- Selecciona --</option>
+                        <?php endif; ?>
+                        <?php foreach ($carrerasActivas as $c): ?>
+                            <option value="<?= (int)$c['id'] ?>"><?= htmlspecialchars($c['nombre']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <?php if (empty($carrerasActivas)): ?>
+                        <small class="form-ayuda text-danger">
+                            No hay carreras activas. Créala primero en la pantalla de períodos.
+                        </small>
+                    <?php endif; ?>
+                </div>
             </div>
 
             <div class="form-group">
@@ -275,7 +372,9 @@ foreach ($materias as $m) {
         </div>
 
         <p class="text-muted mb-4" style="font-size:.87rem">
-            Materia: <strong id="asignarMateriaNombre" class="text-primary"></strong>
+            Materia: <strong id="asignarMateriaNombre" class="text-primary"></strong><br>
+            Semestre: <strong id="asignarMateriaSemestre"></strong>
+            <span class="text-muted">(viene de la materia, no se elige aquí)</span>
         </p>
 
         <form action="<?= $base ?>/admin/materias/asignar" method="POST" id="formAsignar">
@@ -299,29 +398,16 @@ foreach ($materias as $m) {
                 <?php endif; ?>
             </div>
 
-            <div class="form-group">
+            <div class="form-group mb-6">
                 <label for="asignarAmbiente" class="form-label">Ambiente <span class="text-danger">*</span></label>
                 <select id="asignarAmbiente" name="ambiente" class="form-select" required>
                     <?php foreach ($ambientes as $a): ?>
                         <option value="<?= htmlspecialchars($a, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($a) ?></option>
                     <?php endforeach; ?>
                 </select>
-            </div>
-
-            <div class="form-group mb-6">
-                <label for="asignarSemestre" class="form-label">Semestre <span class="text-danger">*</span></label>
-                <select id="asignarSemestre" name="semestre" class="form-select" required>
-                    <option value="">-- Selecciona el semestre --</option>
-                    <?php foreach ($semestres as $s): ?>
-                        <?php if ((int)$s['activo'] === 1): ?>
-                            <option value="<?= htmlspecialchars($s['nombre'], ENT_QUOTES, 'UTF-8') ?>">
-                                <?= htmlspecialchars($s['nombre']) ?>
-                            </option>
-                        <?php endif; ?>
-                    <?php endforeach; ?>
-                </select>
                 <small class="form-ayuda">
-                    La misma materia puede asignarse varias veces: distinto ambiente o semestre es un curso aparte.
+                    El mismo docente puede repetir la materia en otro ambiente: la teoría
+                    en el Aula y la práctica en el Laboratorio son dos cursos.
                 </small>
             </div>
 
@@ -341,22 +427,15 @@ foreach ($materias as $m) {
             <button type="button" class="modal-close-btn" onclick="cerrarModal('modalSemestres')" aria-label="Cerrar">&times;</button>
         </div>
 
-        <p class="text-muted mb-4" style="font-size:.86rem">
-            Si renombras un semestre, el cambio se aplica también a los estudiantes
-            y cursos que ya lo usaban.
+        <p class="text-muted mb-4" style="font-size:.87rem">
+            Los semestres son comunes a todos los períodos. Renombrar uno arrastra
+            el cambio a los estudiantes y a los cursos que ya lo usan.
         </p>
 
-        <?php
-        /* Esta lista vive dentro del modal, que queda FUERA de la region
-           "materias". Sin marcarla como region propia, la capa AJAX no la
-           refrescaba: al borrar un semestre la fila seguia en pantalla y, al
-           pulsar Eliminar otra vez sobre ella, el servidor respondia "Ese
-           semestre ya no existe". */
-        ?>
-        <div class="table-responsive mb-4" data-region="lista-semestres">
+        <div class="table-responsive mb-4">
             <table class="table">
                 <thead>
-                    <tr><th>Orden</th><th>Nombre</th><th>Estado</th><th class="text-right">Acción</th></tr>
+                    <tr><th>Orden</th><th>Semestre</th><th>Estado</th><th class="text-right">Acción</th></tr>
                 </thead>
                 <tbody>
                     <?php foreach ($semestres as $s): ?>
@@ -365,12 +444,12 @@ foreach ($materias as $m) {
                             <td class="font-medium"><?= htmlspecialchars($s['nombre']) ?></td>
                             <td>
                                 <span class="badge <?= (int)$s['activo'] === 1 ? 'badge-success' : 'badge-neutral' ?>">
-                                    <?= (int)$s['activo'] === 1 ? 'ACTIVO' : 'INACTIVO' ?>
+                                    <?= (int)$s['activo'] === 1 ? 'Activo' : 'Inactivo' ?>
                                 </span>
                             </td>
                             <td class="text-right">
                                 <form action="<?= $base ?>/admin/semestres/eliminar" method="POST" class="inline"
-                                      data-confirmar="¿Eliminar el semestre &quot;<?= htmlspecialchars($s['nombre'], ENT_QUOTES, 'UTF-8') ?>&quot;? Solo se puede si no hay estudiantes ni cursos usándolo.">
+                                      data-confirmar="¿Eliminar este semestre? Solo se puede si ningún estudiante ni curso lo usa.">
                                     <input type="hidden" name="csrf_token" value="<?= $tok ?>">
                                     <input type="hidden" name="id" value="<?= (int)$s['id'] ?>">
                                     <button type="submit" class="btn btn-sm btn-peligro-suave">Eliminar</button>
@@ -388,7 +467,7 @@ foreach ($materias as $m) {
                 <div class="form-group">
                     <label for="semestreNombre" class="form-label">Nuevo semestre</label>
                     <input type="text" id="semestreNombre" name="nombre" class="form-control"
-                           maxlength="40" placeholder="Ej: Quinto Semestre" required>
+                           required maxlength="40" placeholder="Quinto Semestre">
                 </div>
                 <div class="form-group">
                     <label for="semestreOrden" class="form-label">Orden</label>
@@ -414,7 +493,7 @@ document.addEventListener('keydown', e => {
 
 const BASE = document.body.dataset.base || '';
 
-/** Propone el codigo corto mientras se escribe el nombre, sin pisar lo que el admin escriba */
+/** Propone el código corto mientras se escribe el nombre, sin pisar lo que el admin escriba */
 function proponerCodigo() {
     const campoCodigo = document.getElementById('materiaCodigo');
     if (campoCodigo.dataset.tocado === '1') return;
@@ -449,43 +528,40 @@ function nuevaMateria() {
     document.getElementById('materiaNombre').focus();
 }
 
-/** Modo "editar": el mismo formulario apunta a otra ruta */
-function editarMateria(id, codigo, nombre, activa) {
+/**
+ * Modo "editar": el mismo formulario apunta a otra ruta.
+ *
+ * Recibe un objeto y no seis parámetros sueltos porque los nombres de materia
+ * llevan tildes, comillas y apóstrofos, y armarlos a mano dentro del onclick
+ * es como se rompía el atributo con nombres tipo "Ética y Deontología".
+ */
+function editarMateria(m) {
     const f = document.getElementById('formMateria');
     f.action = BASE + '/admin/materias/actualizar';
-    document.getElementById('materiaId').value = id;
-    document.getElementById('materiaNombre').value = nombre;
-    document.getElementById('materiaCodigo').value = codigo;
+    document.getElementById('materiaId').value = m.id;
+    document.getElementById('materiaNombre').value = m.nombre;
+    document.getElementById('materiaSemestre').value = m.semestre;
+    document.getElementById('materiaCarrera').value = m.carrera || '';
+    document.getElementById('materiaCodigo').value = m.codigo;
     document.getElementById('materiaCodigo').dataset.tocado = '1';
-    document.getElementById('materiaActiva').value = activa ? '1' : '0';
+    document.getElementById('materiaActiva').value = m.activa ? '1' : '0';
     document.getElementById('tituloModalMateria').textContent = 'Editar Materia';
     document.getElementById('botonMateria').textContent = 'Guardar Cambios';
     document.getElementById('grupoEstadoMateria').hidden = false;
     abrirModal('modalMateria');
 }
 
-/**
- * Abre el modal de asignacion. Si se indica un semestre, llega ya elegido:
- * asi el administrador que quiere "esta materia en Tercero" lo hace de un
- * clic en vez de abrir el modal y volver a buscarlo en la lista.
- */
-function asignar(materiaId, nombre, semestre) {
+/** Abre el modal de asignación con la materia y su semestre ya resueltos */
+function asignar(m) {
     const f = document.getElementById('formAsignar');
     f.reset();
-    document.getElementById('asignarMateriaId').value = materiaId;
-    document.getElementById('asignarMateriaNombre').textContent = nombre;
-
-    if (semestre) {
-        document.getElementById('asignarSemestre').value = semestre;
-    }
+    document.getElementById('asignarMateriaId').value = m.id;
+    document.getElementById('asignarMateriaNombre').textContent = m.nombre;
+    document.getElementById('asignarMateriaSemestre').textContent = m.semestre;
 
     abrirModal('modalAsignar');
     document.getElementById('asignarDocente').focus();
 }
-
-// El boton "+ Nueva Materia" de la cabecera siempre abre en modo crear
-document.querySelector('.acciones-cabecera .btn-primary')
-    ?.addEventListener('click', nuevaMateria);
 </script>
 
 <?php require dirname(__DIR__) . '/layouts/footer.php'; ?>

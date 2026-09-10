@@ -9,9 +9,18 @@ require_once dirname(__DIR__) . '/libs/Totp.php';
 /**
  * Autenticacion del sistema.
  *
- * El acceso es UNICO para administradores y docentes: mismo formulario y mismo
- * correo institucional. Lo que cambia es el panel al que se entra segun el rol.
- * Los estudiantes NO tienen cuenta: solo escanean el QR y llenan el formulario.
+ * Hay DOS PUERTAS separadas, una por rol: /acceso/docente y /acceso/admin.
+ * Comparten el mecanismo (mismo correo institucional, misma contraseña, misma
+ * verificacion en dos pasos) pero cada una solo deja pasar a su rol.
+ *
+ * La separacion no es decorativa. Con una sola puerta, un docente que probaba
+ * su clave nunca sabia si el sistema le negaba el paso por la contraseña o por
+ * el rol, y el panel al que caia dependia de un dato invisible. Con dos
+ * puertas, cada quien sabe desde el principio a donde va y el sistema puede
+ * decir con claridad "esta entrada no es la tuya".
+ *
+ * Los estudiantes NO tienen cuenta: solo escanean el QR y llenan el
+ * formulario. Su puerta es la tercera de la portada, y no pasa por aqui.
  */
 class AuthController extends BaseController
 {
@@ -20,6 +29,25 @@ class AuthController extends BaseController
 
     private const MAX_INTENTOS     = 5;
     private const BLOQUEO_SEGUNDOS = 120;
+
+    /**
+     * Las dos puertas del personal. La clave es el rol que admite cada una,
+     * y por eso coincide con el valor guardado en usuarios.rol.
+     */
+    private const PUERTAS = [
+        'docente' => [
+            'ruta'     => '/acceso/docente',
+            'titulo'   => 'Acceso Docente',
+            'subtitulo'=> 'Para abrir clases y pasar lista',
+            'otra'     => 'admin'
+        ],
+        'admin' => [
+            'ruta'     => '/acceso/admin',
+            'titulo'   => 'Acceso Administración',
+            'subtitulo'=> 'Supervisión y gestión académica',
+            'otra'     => 'docente'
+        ]
+    ];
 
     /**
      * El codigo aleatorio que se mostraba en pantalla fue reemplazado por
@@ -32,15 +60,43 @@ class AuthController extends BaseController
      * poder entrar.
      */
 
-    /** La direccion vieja /login lleva al acceso nuevo, sin romper marcadores */
+    /**
+     * Las direcciones antiguas (/login y /acceso a secas) llevan a la portada,
+     * que es donde ahora se elige la puerta. No se mandan a una de las dos por
+     * su cuenta: acertar el rol por adivinanza dejaria a la mitad de la gente
+     * en la entrada equivocada.
+     */
     public function redirigirAcceso(): void
     {
-        $this->redireccionar('/acceso');
+        $this->redireccionar('/');
     }
 
-    public function mostrarLogin(): void
+    public function mostrarLoginDocente(): void
+    {
+        $this->mostrarPuerta('docente');
+    }
+
+    public function mostrarLoginAdmin(): void
+    {
+        $this->mostrarPuerta('admin');
+    }
+
+    public function procesarLoginDocente(): void
+    {
+        $this->procesarPuerta('docente');
+    }
+
+    public function procesarLoginAdmin(): void
+    {
+        $this->procesarPuerta('admin');
+    }
+
+    private function mostrarPuerta(string $puerta): void
     {
         $this->iniciarSesion();
+
+        // Se recuerda por que puerta entro, para devolverlo aqui si algo falla
+        $_SESSION['puerta_acceso'] = $puerta;
 
         // Si ya hay sesion abierta, ir directo al panel que corresponde
         if (!empty($_SESSION['usuario_id'])) {
@@ -50,37 +106,47 @@ class AuthController extends BaseController
         [$mensaje, $error] = $this->obtenerFlash();
 
         $this->vista('auth.login', [
-            'base'    => self::obtenerRutaBase(),
-            'mensaje' => $mensaje,
-            'error'   => $error,
-            'csrf'    => self::tokenCsrf(),
-            'dominio' => Catalogo::DOMINIO
+            'base'      => self::obtenerRutaBase(),
+            'puerta'    => $puerta,
+            // Se llama 'tituloPuerta' y no 'titulo' porque las vistas usan la
+            // variable $titulo para el titulo de la pestaña del navegador: con
+            // el mismo nombre, una de las dos cosas pisaria a la otra.
+            'tituloPuerta' => self::PUERTAS[$puerta]['titulo'],
+            'subtitulo' => self::PUERTAS[$puerta]['subtitulo'],
+            'accion'    => self::PUERTAS[$puerta]['ruta'],
+            'otraRuta'  => self::PUERTAS[self::PUERTAS[$puerta]['otra']]['ruta'],
+            'otroTexto' => self::PUERTAS[self::PUERTAS[$puerta]['otra']]['titulo'],
+            'mensaje'   => $mensaje,
+            'error'     => $error,
+            'csrf'      => self::tokenCsrf(),
+            'dominio'   => Catalogo::DOMINIO
         ]);
     }
 
-    public function procesarLogin(): void
+    private function procesarPuerta(string $puerta): void
     {
         $this->iniciarSesion();
-        $this->verificarCsrf('/acceso');
+        $_SESSION['puerta_acceso'] = $puerta;
+        $this->verificarCsrf(self::PUERTAS[$puerta]['ruta']);
 
         $correo   = mb_strtolower(trim($_POST['correo'] ?? ''));
         $password = (string)($_POST['password'] ?? '');
 
         // Validacion 1: campos obligatorios
         if ($correo === '' || $password === '') {
-            $this->redirigirConError('Ingresa tu correo institucional y tu contraseña.', '/acceso');
+            $this->redirigirConError('Ingresa tu correo institucional y tu contraseña.', $this->rutaAcceso());
         }
 
         // Validacion 2: solo se admite el dominio institucional.
         // Se comprueba el dominio exacto, no que "termine en": un correo como
         // alguien@falso-istpet.edu.ec terminaria en esa cadena y pasaria.
         if (!Catalogo::esCorreoInstitucional($correo)) {
-            $this->redirigirConError('Correo o contraseña incorrectos.', '/acceso');
+            $this->redirigirConError('Correo o contraseña incorrectos.', $this->rutaAcceso());
         }
 
         // Validacion 3: longitudes razonables antes de tocar la base de datos
         if (mb_strlen($correo) > 150 || strlen($password) > 200) {
-            $this->redirigirConError('Correo o contraseña incorrectos.', '/acceso');
+            $this->redirigirConError('Correo o contraseña incorrectos.', $this->rutaAcceso());
         }
 
         // Validacion 4: bloqueo temporal tras varios intentos fallidos
@@ -88,7 +154,7 @@ class AuthController extends BaseController
             $restante = $_SESSION['login_bloqueo_hasta'] - time();
             $this->redirigirConError(
                 "Demasiados intentos fallidos. Espera {$restante} segundos antes de volver a intentarlo.",
-                '/acceso'
+                $this->rutaAcceso()
             );
         }
 
@@ -98,13 +164,32 @@ class AuthController extends BaseController
         // nunca se guarda ni se puede recuperar de la base de datos
         if (!$usuario || !password_verify($password, $usuario['password'])) {
             $this->registrarIntentoFallido();
-            $this->redirigirConError('Correo o contraseña incorrectos.', '/acceso');
+            $this->redirigirConError('Correo o contraseña incorrectos.', $this->rutaAcceso());
         }
 
         if ((int)$usuario['activo'] === 0) {
             $this->redirigirConError(
                 'Tu cuenta institucional está desactivada. Comunícate con el Administrador.',
-                '/acceso'
+                $this->rutaAcceso()
+            );
+        }
+
+        // ---- La puerta tiene que corresponder al rol ----
+        //
+        // Se comprueba DESPUES de la contraseña a proposito. Si se hiciera
+        // antes, el mensaje "esta entrada no es la tuya" le confirmaria a
+        // cualquiera que ese correo existe y con que rol, sin necesidad de
+        // saber la clave. Aqui ya la sabe, asi que decirselo con claridad no
+        // le revela nada nuevo y le ahorra el desconcierto.
+        $rolReal = Catalogo::esRolValido($usuario['rol']) ? $usuario['rol'] : 'docente';
+
+        if ($rolReal !== $puerta) {
+            $correcta = self::PUERTAS[$rolReal];
+            $this->limpiarIntentos();
+            $this->redirigirConError(
+                'Esta entrada es solo para ' . ($puerta === 'admin' ? 'administradores' : 'docentes')
+                . '. Tu cuenta entra por "' . $correcta['titulo'] . '".',
+                $correcta['ruta']
             );
         }
 
@@ -136,14 +221,14 @@ class AuthController extends BaseController
         $pendiente = $this->verificacionPendiente();
 
         if ($pendiente === null) {
-            $this->redirigirConError('Vuelve a iniciar sesión.', '/acceso');
+            $this->redirigirConError('Vuelve a iniciar sesión.', $this->rutaAcceso());
         }
 
         $usuario = Usuario::buscarPorId($pendiente['usuario_id']);
 
         if (!$usuario) {
             unset($_SESSION['totp_pendiente']);
-            $this->redirigirConError('Vuelve a iniciar sesión.', '/acceso');
+            $this->redirigirConError('Vuelve a iniciar sesión.', $this->rutaAcceso());
         }
 
         [, $error] = $this->obtenerFlash();
@@ -151,6 +236,7 @@ class AuthController extends BaseController
         $this->vista('auth.verificar', [
             'base'    => self::obtenerRutaBase(),
             'usuario' => $usuario,
+            'volver'  => $this->rutaAcceso(),
             'error'   => $error,
             'csrf'    => self::tokenCsrf()
         ]);
@@ -159,12 +245,12 @@ class AuthController extends BaseController
     public function procesarVerificacion(): void
     {
         $this->iniciarSesion();
-        $this->verificarCsrf('/acceso');
+        $this->verificarCsrf($this->rutaAcceso());
 
         $pendiente = $this->verificacionPendiente();
 
         if ($pendiente === null) {
-            $this->redirigirConError('La verificación caducó. Vuelve a iniciar sesión.', '/acceso');
+            $this->redirigirConError('La verificación caducó. Vuelve a iniciar sesión.', $this->rutaAcceso());
         }
 
         // El segundo paso tambien se limita: si no, alguien con la contraseña
@@ -175,7 +261,7 @@ class AuthController extends BaseController
             unset($_SESSION['totp_pendiente'], $_SESSION['totp_intentos']);
             $this->redirigirConError(
                 'Demasiados códigos incorrectos. Vuelve a iniciar sesión.',
-                '/acceso'
+                $this->rutaAcceso()
             );
         }
 
@@ -219,6 +305,11 @@ class AuthController extends BaseController
         $_SESSION['ultima_actividad'] = time();   // Punto de partida del cierre por inactividad
         $_SESSION['totp_activo']      = Usuario::tieneTotpActivo($usuario);
 
+        // El periodo se vuelve a elegir en cada entrada. Arrastrar el de la
+        // sesion anterior es como se termina cargando la malla del ciclo nuevo
+        // dentro del viejo sin darse cuenta.
+        unset($_SESSION['periodo_id']);
+
         $this->redireccionar($this->panelDelRol());
     }
 
@@ -232,14 +323,14 @@ class AuthController extends BaseController
     public function solicitarClave(): void
     {
         $this->iniciarSesion();
-        $this->verificarCsrf('/acceso');
+        $this->verificarCsrf($this->rutaAcceso());
 
         $correo = mb_strtolower(trim($_POST['correo'] ?? ''));
         $aviso  = 'Si ese correo pertenece a una cuenta del instituto, el administrador '
                 . 'recibió tu solicitud y se pondrá en contacto contigo.';
 
         if ($correo === '' || !filter_var($correo, FILTER_VALIDATE_EMAIL)) {
-            $this->redirigirConError('Escribe tu correo institucional.', '/acceso');
+            $this->redirigirConError('Escribe tu correo institucional.', $this->rutaAcceso());
         }
 
         $usuario = Usuario::buscarPorCorreo($correo);
@@ -248,7 +339,7 @@ class AuthController extends BaseController
             SolicitudClave::crear((int)$usuario['id']);
         }
 
-        $this->redirigirConMensaje($aviso, '/acceso');
+        $this->redirigirConMensaje($aviso, $this->rutaAcceso());
     }
 
     /** Pantalla donde el docente escribe su nueva clave, desde el enlace */
@@ -262,7 +353,7 @@ class AuthController extends BaseController
         if (!$solicitud) {
             $this->redirigirConError(
                 'Ese enlace no es válido, ya se usó o caducó. Solicita la clave de nuevo.',
-                '/acceso'
+                $this->rutaAcceso()
             );
         }
 
@@ -282,13 +373,15 @@ class AuthController extends BaseController
     public function guardarNuevaClave(): void
     {
         $this->iniciarSesion();
-        $this->verificarCsrf('/acceso');
+        $this->verificarCsrf($this->rutaAcceso());
 
         $token     = (string)($_POST['token'] ?? '');
         $solicitud = SolicitudClave::porToken($token);
 
         if (!$solicitud) {
-            $this->redirigirConError('Ese enlace no es válido o ya caducó.', '/acceso');
+            // Sin solicitud no se sabe de quien es la cuenta, asi que no hay
+            // forma de elegir su puerta: se lo devuelve a la portada.
+            $this->redirigirConError('Ese enlace no es válido o ya caducó.', '/');
         }
 
         $password = (string)($_POST['password'] ?? '');
@@ -319,7 +412,15 @@ class AuthController extends BaseController
         // El enlace se quema: no puede volver a usarse
         SolicitudClave::marcarUsado((int)$solicitud['id']);
 
-        $this->redirigirConMensaje('Contraseña actualizada. Ya puedes iniciar sesión.', '/acceso');
+        // Se lo deja en la puerta que le toca segun su rol, no en una
+        // generica: acaba de cambiar la clave y lo siguiente que hara es entrar.
+        $duenio = Usuario::buscarPorId((int)$solicitud['usuario_id']);
+        $puerta = ($duenio && ($duenio['rol'] ?? '') === 'admin') ? 'admin' : 'docente';
+
+        $this->redirigirConMensaje(
+            'Contraseña actualizada. Ya puedes iniciar sesión.',
+            self::PUERTAS[$puerta]['ruta']
+        );
     }
 
     public function logout(): void
@@ -338,9 +439,25 @@ class AuthController extends BaseController
 
     // ------------------------------------------------------------------
 
+    /**
+     * A donde va cada rol nada mas entrar.
+     *
+     * El administrador no cae en su panel sino en la eleccion de PERIODO
+     * ACADEMICO. Es deliberado: casi todo lo que hara despues (crear materias,
+     * asignar docentes, sacar reportes) ocurre dentro de un ciclo concreto, y
+     * dar por supuesto cual es el ciclo es como termina la malla de un periodo
+     * cargada dentro de otro.
+     */
     private function panelDelRol(): string
     {
-        return (($_SESSION['usuario_rol'] ?? '') === 'admin') ? '/admin' : '/docente';
+        return (($_SESSION['usuario_rol'] ?? '') === 'admin') ? '/admin/periodo' : '/docente';
+    }
+
+    /** La puerta por la que entro el usuario, para devolverlo a la correcta */
+    private function rutaAcceso(): string
+    {
+        $puerta = $_SESSION['puerta_acceso'] ?? 'docente';
+        return self::PUERTAS[$puerta]['ruta'] ?? '/acceso/docente';
     }
 
     private function estaBloqueado(): bool

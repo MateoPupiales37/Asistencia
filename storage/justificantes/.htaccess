@@ -1,0 +1,8 @@
+# Los justificantes contienen datos de salud: nunca se sirven por HTTP.
+# Para verlos hay que pasar por /docente/justificante, que comprueba antes
+# quien lo pide.
+Require all denied
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>

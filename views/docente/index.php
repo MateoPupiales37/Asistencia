@@ -275,6 +275,7 @@ $tok = htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8');
                 <option value="presente">Solo los que están en clase</option>
                 <option value="salio">Solo los que ya salieron</option>
                 <option value="salida_temprana">Solo salidas anticipadas</option>
+                <option value="salida_justificada">Solo salidas justificadas</option>
             </select>
             <span class="text-muted" id="contadorFiltro"></span>
         </div>

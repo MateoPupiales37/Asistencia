@@ -25,18 +25,36 @@ class Catalogo
 
     // Motivos de salida anticipada. Deben coincidir con el ENUM motivo de asistencias.
     public const MOTIVOS = [
+        'Cita medica'             => 'Cita médica',
         'Emergencia medica'       => 'Emergencia médica',
         'Llamado de coordinacion' => 'Llamado de coordinación',
-        'Mal comportamiento'      => 'Mal comportamiento',
         'Permiso del docente'     => 'Permiso del docente',
+        'Mal comportamiento'      => 'Mal comportamiento',
         'Otro'                    => 'Otro'
+    ];
+
+    /**
+     * Motivos que dejan la salida JUSTIFICADA.
+     *
+     * La diferencia no es cosmetica: al final del periodo, la salida del
+     * alumno que se fue a una cita medica no puede contar igual que la del
+     * que salio por mal comportamiento. Los cuatro de aqui responden a una
+     * causa ajena al alumno o autorizada por el instituto; "Mal
+     * comportamiento" y "Otro" no lo son, y por eso quedan fuera.
+     */
+    public const MOTIVOS_JUSTIFICADOS = [
+        'Cita medica',
+        'Emergencia medica',
+        'Llamado de coordinacion',
+        'Permiso del docente'
     ];
 
     // Estados posibles de una asistencia con su etiqueta visible
     public const ESTADOS = [
-        'presente'        => 'En clase',
-        'salio'           => 'Salida registrada',
-        'salida_temprana' => 'Salida anticipada'
+        'presente'            => 'En clase',
+        'salio'               => 'Salida registrada',
+        'salida_temprana'     => 'Salida anticipada',
+        'salida_justificada'  => 'Salida justificada'
     ];
 
     public const ROLES = ['docente', 'admin'];
@@ -63,6 +81,14 @@ class Catalogo
     public static function esMotivoValido(?string $valor): bool
     {
         return isset(self::MOTIVOS[$valor]);
+    }
+
+    /** El estado que corresponde a una salida anticipada segun su motivo */
+    public static function estadoDeSalida(?string $motivo): string
+    {
+        return in_array($motivo, self::MOTIVOS_JUSTIFICADOS, true)
+            ? 'salida_justificada'
+            : 'salida_temprana';
     }
 
     /**
@@ -147,6 +173,44 @@ class Catalogo
         $verificador = (10 - ($suma % 10)) % 10;
 
         return $verificador === (int)$cedula[9];
+    }
+
+    /**
+     * Explica en una frase por que una cedula no es valida.
+     *
+     * Existe porque el mensaje unico que habia antes ("el digito verificador
+     * no coincide") era falso en la mitad de los casos: una cedula como
+     * 1788888888 se rechaza por el TERCER digito, no por el ultimo, y quien
+     * la escribia se quedaba revisando el numero equivocado. Devuelve cadena
+     * vacia cuando la cedula es correcta.
+     */
+    public static function porQueCedulaInvalida(?string $valor): string
+    {
+        $cedula = self::normalizarCedula($valor);
+
+        if ($cedula === '') {
+            return 'Escribe el número de cédula.';
+        }
+
+        if (strlen($cedula) !== 10) {
+            return 'La cédula debe tener 10 dígitos y escribiste ' . strlen($cedula) . '.';
+        }
+
+        $provincia = (int)substr($cedula, 0, 2);
+        if (($provincia < 1 || $provincia > 24) && $provincia !== 30) {
+            return 'Los dos primeros dígitos son la provincia y deben ir del 01 al 24 (o 30). '
+                 . 'Los tuyos son ' . substr($cedula, 0, 2) . '.';
+        }
+
+        if ((int)$cedula[2] > 5) {
+            return 'El tercer dígito de una cédula de persona natural es menor que 6, y el tuyo es '
+                 . $cedula[2] . '.';
+        }
+
+        return self::esCedulaValida($cedula)
+            ? ''
+            : 'El último dígito (el verificador) no corresponde a los otros nueve. '
+            . 'Revisa que no hayas cambiado dos números de lugar.';
     }
 
     public static function etiquetaEstado(?string $estado): string

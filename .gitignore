@@ -21,3 +21,8 @@ database/respaldos/*
 # Archivos subidos por los usuarios (listas de matricula)
 storage/uploads/*
 !storage/uploads/.gitkeep
+
+# Justificantes subidos por los docentes: son datos de salud
+storage/justificantes/*
+!storage/justificantes/.gitkeep
+!storage/justificantes/.htaccess

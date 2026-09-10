@@ -1965,10 +1965,43 @@ code {
     border-radius: var(--radius-md);
 }
 
+/*
+   Distintivo de la puerta. Con dos accesos casi identicos, este rotulo es lo
+   que evita que alguien escriba su clave de docente en la entrada de
+   administracion y se quede sin entender por que no pasa.
+*/
+.auth-distintivo {
+    display: inline-block;
+    padding: 4px 14px;
+    margin-bottom: 10px;
+    border-radius: var(--radius-full);
+    font-size: .68rem;
+    font-weight: var(--font-weight-bold);
+    letter-spacing: .12em;
+}
+
+.auth-distintivo.es-docente {
+    background: rgba(37, 71, 155, .10);
+    color: var(--color-primary);
+    border: 1px solid rgba(37, 71, 155, .22);
+}
+
+.auth-distintivo.es-admin {
+    background: rgba(16, 138, 122, .10);
+    color: #0f766e;
+    border: 1px solid rgba(16, 138, 122, .24);
+}
+
+/* Una linea de color en el borde superior refuerza de que puerta se trata */
+.auth-card-admin   { border-top: 3px solid #0f766e; }
+.auth-card-docente { border-top: 3px solid var(--color-primary); }
+
 .auth-title {
     font-size: 1.3rem;
     font-weight: var(--font-weight-extrabold);
     color: var(--color-primary);
+    /* Los titulos largos bajan de linea en vez de cortarse */
+    overflow-wrap: anywhere;
 }
 
 .auth-subtitle {
@@ -3802,157 +3835,6 @@ input[type="file"].form-control {
     }
 }
 
-/* --------------------------------------------------------------------------
-   PORTADA: LAS DOS PUERTAS DE ENTRADA
-   Cada tarjeta es un enlace completo, para que en el celular se pueda tocar
-   en cualquier punto y no solo en el texto del final.
-   -------------------------------------------------------------------------- */
-
-.home-pregunta {
-    text-align: center;
-    font-size: .82rem;
-    text-transform: uppercase;
-    letter-spacing: .09em;
-    font-weight: var(--font-weight-semibold);
-    color: var(--color-text-muted);
-    margin: 0 0 16px;
-}
-
-.home-puerta {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 26px 24px 22px;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg, 14px);
-    box-shadow: 0 1px 3px rgba(15, 23, 42, .06);
-    text-decoration: none;
-    color: inherit;
-    overflow: hidden;
-    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
-}
-
-/* Franja de color que identifica cada camino de un vistazo */
-.home-puerta::before {
-    content: '';
-    position: absolute;
-    inset: 0 0 auto 0;
-    height: 4px;
-}
-
-.home-puerta-estudiante::before { background: var(--color-accent); }
-.home-puerta-personal::before   { background: var(--color-primary); }
-
-.home-puerta:hover,
-.home-puerta:focus-visible {
-    transform: translateY(-3px);
-    box-shadow: 0 10px 26px rgba(15, 23, 42, .13);
-    border-color: var(--color-border-focus, var(--color-primary));
-}
-
-.puerta-icono {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 52px;
-    height: 52px;
-    border-radius: 12px;
-    flex-shrink: 0;
-}
-
-.home-puerta-estudiante .puerta-icono {
-    background: var(--color-accent-light, #faf3e0);
-    color: var(--color-accent);
-}
-
-.home-puerta-personal .puerta-icono {
-    background: var(--color-primary-light, #e8eaf3);
-    color: var(--color-primary);
-}
-
-.puerta-tag {
-    display: inline-block;
-    font-size: .66rem;
-    font-weight: var(--font-weight-bold, 700);
-    letter-spacing: .09em;
-    text-transform: uppercase;
-    padding: 3px 9px;
-    border-radius: 999px;
-}
-
-.home-puerta-estudiante .puerta-tag {
-    background: var(--color-accent-light, #faf3e0);
-    color: #7a6320;
-}
-
-.home-puerta-personal .puerta-tag {
-    background: var(--color-primary-light, #e8eaf3);
-    color: var(--color-primary-dark);
-}
-
-.home-puerta h2 {
-    margin: 0;
-    font-size: 1.3rem;
-    font-weight: var(--font-weight-bold, 700);
-    color: var(--color-primary-dark);
-    line-height: 1.25;
-}
-
-.home-puerta p {
-    margin: 0;
-    font-size: .92rem;
-    line-height: 1.55;
-    color: var(--color-text-muted);
-}
-
-/* La accion parece un boton, pero toda la tarjeta es el enlace */
-.puerta-accion {
-    margin-top: auto;
-    padding-top: 6px;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: .92rem;
-    font-weight: var(--font-weight-semibold);
-}
-
-.home-puerta-estudiante .puerta-accion { color: #8a6f22; }
-.home-puerta-personal .puerta-accion   { color: var(--color-primary); }
-
-.home-puerta:hover .puerta-accion { text-decoration: underline; }
-
-/* Banda de sesion ya iniciada */
-.home-sesion-activa {
-    text-align: center;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg, 14px);
-    padding: 20px;
-    margin-bottom: 22px;
-}
-
-.home-sesion-activa h3 {
-    margin: 10px 0 14px;
-    font-size: 1.15rem;
-    color: var(--color-primary-dark);
-}
-
-/* Dos columnas desde tablet en adelante */
-@media (min-width: 720px) {
-    .home-opciones {
-        grid-template-columns: 1fr 1fr;
-        gap: 20px;
-    }
-
-    .home-puerta {
-        padding: 30px 28px 26px;
-        min-height: 260px;
-    }
-}
-
 /* ==========================================================================
    PORTADA INSTITUCIONAL
    Pantalla completa azul con la malla de constelacion y, abajo, la barra
@@ -4109,12 +3991,18 @@ body.portada-body .footer {
 }
 
 /* --------------------------- Barra de entrada --------------------------- */
+/*
+   Tres puertas de igual peso visual. Antes eran dos y la segunda se dibujaba
+   en espejo, apuntando hacia afuera; con tres esa simetria deja de tener
+   sentido y solo confundiria cual es cual, asi que todas se leen igual: icono,
+   texto y flecha, de izquierda a derecha.
+*/
 
 .portada-puertas {
     position: relative;
     z-index: 1;
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, 1fr);
     background: rgba(11, 17, 40, .82);
     border-top: 1px solid rgba(255, 255, 255, .12);
     backdrop-filter: blur(6px);
@@ -4124,7 +4012,7 @@ body.portada-body .footer {
     display: flex;
     align-items: center;
     gap: 14px;
-    padding: 22px 26px;
+    padding: 20px 22px;
     text-decoration: none;
     color: #fff;
     transition: background .18s ease;
@@ -4137,7 +4025,8 @@ body.portada-body .footer {
 }
 
 .puerta-estudiante:hover { background: rgba(199, 165, 74, .16); }
-.puerta-personal:hover   { background: rgba(120, 150, 230, .16); }
+.puerta-docente:hover    { background: rgba(120, 150, 230, .16); }
+.puerta-admin:hover      { background: rgba(110, 205, 190, .14); }
 
 .puerta-icono {
     display: inline-flex;
@@ -4155,9 +4044,14 @@ body.portada-body .footer {
     color: #e3c169;
 }
 
-.puerta-personal .puerta-icono {
-    background: rgba(255, 255, 255, .10);
+.puerta-docente .puerta-icono {
+    background: rgba(120, 150, 230, .16);
     color: #b9caf5;
+}
+
+.puerta-admin .puerta-icono {
+    background: rgba(110, 205, 190, .14);
+    color: #8fded0;
 }
 
 .puerta-texto {
@@ -4168,15 +4062,18 @@ body.portada-body .footer {
 }
 
 .puerta-texto strong {
-    font-size: .95rem;
-    letter-spacing: .12em;
+    /* Los rotulos no se cortan nunca: si no caben, bajan de linea */
+    font-size: .88rem;
+    letter-spacing: .1em;
     font-weight: var(--font-weight-bold, 700);
+    overflow-wrap: anywhere;
 }
 
 .puerta-texto small {
-    font-size: .78rem;
+    font-size: .76rem;
     color: rgba(206, 219, 255, .72);
     line-height: 1.4;
+    overflow-wrap: anywhere;
 }
 
 .puerta-flecha {
@@ -4192,29 +4089,20 @@ body.portada-body .footer {
     color: #fff;
 }
 
-/* La segunda mitad se alinea a la derecha, como en la identidad institucional */
-@media (min-width: 721px) {
-    .puerta-personal {
-        flex-direction: row-reverse;
-        text-align: right;
+/* Tablet: la tercera puerta pasa a ocupar el ancho completo debajo */
+@media (max-width: 1024px) and (min-width: 721px) {
+    .portada-puertas {
+        grid-template-columns: 1fr 1fr;
     }
 
-    .puerta-personal .puerta-texto {
-        align-items: flex-end;
-    }
-
-    .puerta-personal .puerta-flecha {
-        margin-left: 0;
-        margin-right: auto;
-        transform: scaleX(-1);
-    }
-
-    .puerta-personal:hover .puerta-flecha {
-        transform: scaleX(-1) translateX(4px);
+    .puerta-admin {
+        grid-column: 1 / -1;
+        border-left: 0;
+        border-top: 1px solid rgba(255, 255, 255, .12);
     }
 }
 
-/* En el celular las dos puertas se apilan y ocupan todo el ancho */
+/* En el celular las tres puertas se apilan y ocupan todo el ancho */
 @media (max-width: 720px) {
     .portada-puertas {
         grid-template-columns: 1fr;
@@ -4223,6 +4111,11 @@ body.portada-body .footer {
     .puerta + .puerta {
         border-left: 0;
         border-top: 1px solid rgba(255, 255, 255, .12);
+    }
+
+    .puerta {
+        padding: 16px 18px;
+        min-height: 68px;
     }
 
     .portada-centro {
@@ -4239,13 +4132,6 @@ body.portada-body .footer {
     }
 }
 
-/* Respaldo del escaner y avisos de la geocerca */
-.respaldo-foto {
-    margin-top: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
 
 .geo-aviso {
     margin: 0 0 12px;
@@ -4411,6 +4297,173 @@ body.portada-body .footer {
     .legal-pie .btn {
         flex: 1 1 100%;
     }
+}
+
+/* --------------------------------------------------------------------------
+   PERIODO ACADEMICO
+   Tarjetas de eleccion. Cada una tiene que decir de un vistazo si el periodo
+   esta en curso, cuanto contiene y si es el que se esta usando: es la unica
+   pantalla donde una equivocacion manda todo el trabajo posterior al ciclo
+   que no era.
+   -------------------------------------------------------------------------- */
+
+.periodos-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+}
+
+.periodo-tarjeta {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 18px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+}
+
+/* El que se esta usando lleva el borde institucional completo */
+.periodo-tarjeta.es-elegido {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(37, 71, 155, .12);
+}
+
+/* Un periodo cerrado se ve apagado, pero legible: sigue pudiendo consultarse */
+.periodo-tarjeta.es-cerrado {
+    background: var(--color-bg, #f8fafc);
+}
+
+.periodo-cabecera {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.periodo-nombre {
+    margin: 0;
+    font-size: 1.12rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--color-primary);
+    /* Un nombre largo baja de linea en vez de cortarse */
+    overflow-wrap: anywhere;
+}
+
+.periodo-fechas {
+    margin: 0;
+    font-size: .84rem;
+    color: var(--color-text-muted);
+}
+
+.periodo-cifras {
+    list-style: none;
+    margin: 0;
+    padding: 10px 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+    font-size: .82rem;
+    color: var(--color-text-muted);
+}
+
+.periodo-cifras strong {
+    color: var(--color-text-main);
+    font-weight: var(--font-weight-bold);
+}
+
+.periodo-editar {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    font-size: .8rem;
+    color: var(--color-text-muted);
+    text-decoration: underline;
+    cursor: pointer;
+    align-self: center;
+}
+
+.periodo-editar:hover {
+    color: var(--color-primary);
+}
+
+/* La ventana de carreras lleva una tabla dentro y necesita mas ancho */
+.modal-ancho {
+    max-width: 780px;
+}
+
+/*
+   Barra de recordatorio del periodo dentro de las pantallas academicas.
+   Repite lo que ya dice la barra de navegacion porque en esta pantalla es
+   donde de verdad importa: todo lo que se cree aqui queda colgado del periodo
+   que diga esta linea.
+*/
+.periodo-barra {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    background: rgba(37, 71, 155, .06);
+    border: 1px solid rgba(37, 71, 155, .18);
+    border-radius: var(--radius-md);
+    font-size: .88rem;
+}
+
+.periodo-barra-etiqueta {
+    display: block;
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--color-text-muted);
+}
+
+/* Titulo de cada grupo de materias por semestre */
+.grupo-semestre {
+    margin: 26px 0 12px;
+    font-size: .78rem;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    font-weight: var(--font-weight-bold);
+    color: var(--color-text-muted);
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.grupo-semestre:first-of-type {
+    margin-top: 8px;
+}
+
+/* Distintivo del periodo en la barra de navegacion del administrador */
+.nav-periodo {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 11px;
+    border-radius: var(--radius-full);
+    background: rgba(255, 255, 255, .12);
+    border: 1px solid rgba(255, 255, 255, .2);
+    color: #fff;
+    font-size: .74rem;
+    font-weight: var(--font-weight-semibold);
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.nav-periodo:hover {
+    background: rgba(255, 255, 255, .2);
+}
+
+.nav-periodo-etiqueta {
+    opacity: .72;
+    font-weight: var(--font-weight-normal, 400);
 }
 
 /*

@@ -109,15 +109,28 @@ class Asistencia
      * Marca la salida anticipada de un alumno indicando el motivo.
      * Este es el caso de "se fue por una urgencia" o "lo sacaron de clase".
      */
+    /**
+     * Registra que el alumno se retiro antes de que terminara la clase.
+     *
+     * El estado depende del motivo y lo decide Catalogo::estadoDeSalida(): la
+     * cita medica o el permiso del docente dejan la salida JUSTIFICADA,
+     * mientras que el mal comportamiento no. Se guardan como estados distintos
+     * y no como un mismo "salio antes" porque al cerrar el periodo es
+     * justamente esa diferencia la que hay que poder contar por separado.
+     */
     public static function marcarSalidaAnticipada(int $asistenciaId, string $motivo, string $detalle): bool
     {
+        require_once __DIR__ . '/Catalogo.php';
+
+        $estado = Catalogo::estadoDeSalida($motivo);
+
         $db = Database::conectar();
         $stmt = $db->prepare(
             "UPDATE asistencias
-             SET estado = 'salida_temprana', hora_salida = NOW(), motivo = ?, motivo_detalle = ?
+             SET estado = ?, hora_salida = NOW(), motivo = ?, motivo_detalle = ?
              WHERE id = ?"
         );
-        return $stmt->execute([$motivo, ($detalle !== '' ? $detalle : null), $asistenciaId]);
+        return $stmt->execute([$estado, $motivo, ($detalle !== '' ? $detalle : null), $asistenciaId]);
     }
 
     /** Devuelve a un alumno al estado "en clase" (deshace una salida marcada por error) */
@@ -203,6 +216,7 @@ class Asistencia
                 SUM(estado = 'presente')                                AS presentes,
                 SUM(estado = 'salio')                                   AS salieron,
                 SUM(estado = 'salida_temprana')                         AS anticipadas,
+                SUM(estado = 'salida_justificada')                      AS justificadas,
                 SUM(origen = 'manual')                                  AS manuales,
                 SUM(aprobacion = 'pendiente')                            AS pendientes
              FROM asistencias WHERE sesion_id = ?"
@@ -215,6 +229,7 @@ class Asistencia
             'presentes'   => (int)($fila['presentes'] ?? 0),
             'salieron'    => (int)($fila['salieron'] ?? 0),
             'anticipadas' => (int)($fila['anticipadas'] ?? 0),
+            'justificadas'=> (int)($fila['justificadas'] ?? 0),
             'manuales'    => (int)($fila['manuales'] ?? 0),
             'pendientes'  => (int)($fila['pendientes'] ?? 0),
         ];

@@ -419,11 +419,37 @@
 
     /** Cedula ecuatoriana: mismo algoritmo que valida el servidor */
     function cedulaValida(cedula) {
-        if (!/^\d{10}$/.test(cedula)) return false;
+        return porQueCedulaInvalida(cedula) === '';
+    }
+
+    /**
+     * Explica POR QUE una cedula no sirve. Devuelve '' cuando es correcta.
+     *
+     * El mensaje unico que habia antes ("el digito verificador no coincide")
+     * era falso en la mitad de los casos: una cedula como 1788888888 se
+     * rechaza por el TERCER digito, no por el ultimo, y quien la escribia se
+     * quedaba revisando el numero equivocado. Es la copia exacta de
+     * Catalogo::porQueCedulaInvalida en el servidor.
+     */
+    function porQueCedulaInvalida(cedula) {
+        cedula = String(cedula || '').replace(/\D/g, '');
+
+        if (cedula === '') return 'Escribe el número de cédula.';
+
+        if (cedula.length !== 10) {
+            return 'La cédula debe tener 10 dígitos y escribiste ' + cedula.length + '.';
+        }
 
         const provincia = parseInt(cedula.slice(0, 2), 10);
-        if ((provincia < 1 || provincia > 24) && provincia !== 30) return false;
-        if (parseInt(cedula[2], 10) > 5) return false;
+        if ((provincia < 1 || provincia > 24) && provincia !== 30) {
+            return 'Los dos primeros dígitos son la provincia y deben ir del 01 al 24 (o 30). '
+                 + 'Los tuyos son ' + cedula.slice(0, 2) + '.';
+        }
+
+        if (parseInt(cedula[2], 10) > 5) {
+            return 'El tercer dígito de una cédula de persona natural es menor que 6, y el tuyo es '
+                 + cedula[2] + '.';
+        }
 
         const coef = [2, 1, 2, 1, 2, 1, 2, 1, 2];
         let suma = 0;
@@ -431,10 +457,17 @@
             const p = parseInt(cedula[i], 10) * coef[i];
             suma += (p > 9) ? p - 9 : p;
         }
-        return ((10 - (suma % 10)) % 10) === parseInt(cedula[9], 10);
+
+        if (((10 - (suma % 10)) % 10) !== parseInt(cedula[9], 10)) {
+            return 'El último dígito (el verificador) no corresponde a los otros nueve. '
+                 + 'Revisa que no hayas cambiado dos números de lugar.';
+        }
+
+        return '';
     }
 
     window.cedulaValida = cedulaValida;
+    window.porQueCedulaInvalida = porQueCedulaInvalida;
 
     function pintarCampo(campo, estado, mensaje) {
         campo.classList.toggle('campo-error', estado === 'mal');
@@ -458,8 +491,11 @@
             const v = campo.value.trim();
             if (v === '') return pintarCampo(campo, '', '');
             if (v.length < 10) return pintarCampo(campo, '', 'Faltan ' + (10 - v.length) + ' dígito(s)');
-            pintarCampo(campo, cedulaValida(v) ? 'bien' : 'mal',
-                cedulaValida(v) ? 'Cédula válida' : 'El dígito verificador no coincide');
+
+            // El aviso dice exactamente que parte del numero esta mal, en vez
+            // de culpar siempre al ultimo digito
+            const problema = porQueCedulaInvalida(v);
+            pintarCampo(campo, problema === '' ? 'bien' : 'mal', problema || 'Cédula válida');
         }
     });
 

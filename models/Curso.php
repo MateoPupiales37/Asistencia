@@ -107,22 +107,25 @@ class Curso
     }
 
     /**
-     * Quien dicta ya una materia en un semestre concreto.
+     * Quien dicta ya una materia. Devuelve null si esta libre.
      *
-     * Sostiene la regla academica: una materia en un semestre pertenece a UN
-     * solo docente. Devuelve null si esta libre.
+     * Sostiene la regla academica: una materia pertenece a UN solo docente.
+     * No hace falta filtrar tambien por semestre, como se hacia antes: la
+     * materia ya nace con su semestre, su carrera y su periodo, asi que dos
+     * materias del mismo nombre en semestres distintos son dos filas
+     * diferentes y cada una puede tener su propio docente.
      */
-    public static function docenteDeMateriaEnSemestre(int $materiaId, string $semestre): ?array
+    public static function docenteDeMateria(int $materiaId): ?array
     {
         $db = Database::conectar();
         $stmt = $db->prepare(
             "SELECT c.id, c.docente_id, u.nombre AS docente_nombre, u.apellido AS docente_apellido
              FROM cursos c
              JOIN usuarios u ON c.docente_id = u.id
-             WHERE c.materia_id = ? AND c.semestre = ? AND c.activo = 1
+             WHERE c.materia_id = ? AND c.activo = 1
              LIMIT 1"
         );
-        $stmt->execute([$materiaId, $semestre]);
+        $stmt->execute([$materiaId]);
         return $stmt->fetch() ?: null;
     }
 

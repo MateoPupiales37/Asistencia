@@ -16,6 +16,7 @@ require_once dirname(__DIR__) . '/libs/Whatsapp.php';
 require_once dirname(__DIR__) . '/libs/Geo.php';
 require_once dirname(__DIR__) . '/libs/Totp.php';
 require_once dirname(__DIR__) . '/models/Expulsion.php';
+require_once dirname(__DIR__) . '/models/Justificacion.php';
 require_once dirname(__DIR__) . '/config/app.php';
 
 /**
@@ -78,6 +79,12 @@ class DocenteController extends BaseController
             'urlSalida'        => $urlSalida,
             'avisoRed'         => $this->avisoDeRed(),
             'bloqueados'       => $sesionActiva ? Expulsion::deSesion((int)$sesionActiva['id']) : [],
+            // Quien esta matriculado pero no ha marcado: son los candidatos a
+            // que el docente les justifique la falta
+            'ausentes'         => $sesionActiva ? Matricula::ausentesDeSesion((int)$sesionActiva['id']) : [],
+            'justificaciones'  => $sesionActiva ? Justificacion::deSesion((int)$sesionActiva['id']) : [],
+            'tiposJustificacion' => Justificacion::TIPOS,
+            'maxJustificante'  => Justificacion::MAX_BYTES,
             'geocerca'         => $sesionActiva && Geo::coordenadaValida(
                                       $sesionActiva['latitud'] ?? null,
                                       $sesionActiva['longitud'] ?? null
@@ -413,7 +420,18 @@ class DocenteController extends BaseController
         }
 
         if (Asistencia::marcarSalidaAnticipada($asistenciaId, $motivo, $detalle)) {
-            $this->redirigirConMensaje('Salida anticipada registrada con su motivo.', '/docente');
+            // Se le dice al docente en que quedo la salida, porque no es lo
+            // mismo de cara al cierre del periodo
+            $justificada = Catalogo::estadoDeSalida($motivo) === 'salida_justificada';
+
+            $this->redirigirConMensaje(
+                $justificada
+                    ? 'Salida registrada como JUSTIFICADA (' . Catalogo::etiquetaMotivo($motivo) . '). '
+                    . 'Si tienes el respaldo en papel, adjúntalo desde "Justificar".'
+                    : 'Salida anticipada registrada como NO justificada ('
+                    . Catalogo::etiquetaMotivo($motivo) . ').',
+                '/docente'
+            );
         }
 
         $this->redirigirConError('No se pudo registrar la salida anticipada.', '/docente');
@@ -1308,6 +1326,149 @@ class DocenteController extends BaseController
         }
 
         return $sesion;
+    }
+
+    // ==================================================================
+    // JUSTIFICANTES
+    //
+    // El respaldo de una falta o de una salida: el certificado medico, el
+    // permiso de coordinacion. Se guarda junto a la clase y al alumno, de modo
+    // que al revisar el reporte se sepa cuales de esas faltas estaban
+    // respaldadas y cuales no.
+    // ==================================================================
+
+    /**
+     * Registra la justificacion de un alumno en una clase del docente.
+     *
+     * Sirve para los dos casos: el que falto (no hay fila de asistencia) y el
+     * que se retiro antes. Por eso se enlaza a la clase y al alumno, y no al
+     * registro de asistencia.
+     */
+    public function justificar(): void
+    {
+        $this->verificarDocente();
+        $this->verificarCsrf('/docente');
+
+        $sesionId      = filter_var($_POST['sesion_id'] ?? null, FILTER_VALIDATE_INT);
+        $estudianteId  = filter_var($_POST['estudiante_id'] ?? null, FILTER_VALIDATE_INT);
+        $tipo          = trim($_POST['tipo'] ?? '');
+        $detalle       = $this->limpiarTexto($_POST['detalle'] ?? '');
+
+        // La clase tiene que ser de este docente: si no, cualquiera con la
+        // sesion abierta podria justificar faltas en las clases de otro
+        $sesion = $sesionId ? Sesion::buscarPorId($sesionId) : null;
+
+        if (!$sesion || (int)$sesion['docente_id'] !== $this->idUsuarioActual()) {
+            $this->redirigirConError('Esa clase no existe o no es tuya.', '/docente');
+        }
+
+        if (!$estudianteId || !Estudiante::buscarPorId($estudianteId)) {
+            $this->redirigirConError('Ese estudiante ya no existe.', '/docente');
+        }
+
+        if (!Justificacion::esTipoValido($tipo)) {
+            $this->redirigirConError('Selecciona el tipo de justificación.', '/docente');
+        }
+
+        if (mb_strlen($detalle) > 300) {
+            $this->redirigirConError('La descripción no puede superar los 300 caracteres.', '/docente');
+        }
+
+        // El archivo es opcional: hay permisos que se dan de palabra y el
+        // docente puede querer dejar constancia igual
+        $archivo = null;
+        if (isset($_FILES['justificante']) && ($_FILES['justificante']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+            $archivo = $_FILES['justificante'];
+        }
+
+        $resultado = Justificacion::guardar(
+            $sesionId, $estudianteId, $this->idUsuarioActual(), $tipo, $detalle, $archivo
+        );
+
+        if ($resultado !== 'ok') {
+            $this->redirigirConError(Justificacion::mensajeError($resultado), '/docente');
+        }
+
+        $estudiante = Estudiante::buscarPorId($estudianteId);
+        $nombre     = trim(($estudiante['nombre'] ?? '') . ' ' . ($estudiante['apellido'] ?? ''));
+
+        $this->redirigirConMensaje(
+            "Falta de {$nombre} justificada como " . Justificacion::etiquetaTipo($tipo)
+            . ($archivo !== null ? ' con respaldo adjunto.' : '. Puedes adjuntar el respaldo más tarde.'),
+            '/docente'
+        );
+    }
+
+    /** Retira una justificacion registrada por error */
+    public function quitarJustificacion(): void
+    {
+        $this->verificarDocente();
+        $this->verificarCsrf('/docente');
+
+        $id = filter_var($_POST['id'] ?? null, FILTER_VALIDATE_INT);
+
+        if (!$id || !Justificacion::eliminar($id, $this->idUsuarioActual())) {
+            $this->redirigirConError('Esa justificación no existe o no es de tus clases.', '/docente');
+        }
+
+        $this->redirigirConMensaje('Justificación retirada.', '/docente');
+    }
+
+    /**
+     * Entrega el archivo de un justificante.
+     *
+     * El archivo vive FUERA de la carpeta publica, asi que esta es la unica
+     * via para verlo, y aqui se comprueba antes quien lo pide. Un certificado
+     * medico es un dato de salud: si el archivo estuviera bajo public/,
+     * cualquiera que acertara la direccion podria abrirlo sin haber iniciado
+     * sesion siquiera.
+     */
+    public function verJustificante(): void
+    {
+        $this->verificarDocente();
+
+        $id            = filter_var($_GET['id'] ?? null, FILTER_VALIDATE_INT);
+        $justificacion = $id ? Justificacion::buscarPorId($id) : null;
+
+        // Lo ve el docente de esa clase; el administrador ve cualquiera,
+        // porque es quien atiende los reclamos de secretaria.
+        $esDuenio = $justificacion
+                 && (int)$justificacion['sesion_docente_id'] === $this->idUsuarioActual();
+
+        if (!$justificacion || (!$esDuenio && !self::esAdmin())) {
+            $this->redirigirConError('Ese justificante no existe o no es de tus clases.', '/docente');
+        }
+
+        $ruta = Justificacion::rutaArchivo($justificacion['archivo']);
+
+        if ($ruta === null) {
+            $this->redirigirConError('Esa justificación no tiene ningún archivo adjunto.', '/docente');
+        }
+
+        $this->limpiarBufferSalida();
+
+        header('Content-Type: ' . ($justificacion['archivo_tipo'] ?: 'application/octet-stream'));
+        header('Content-Length: ' . filesize($ruta));
+        // 'inline' para que el PDF o la foto se abran en el navegador; el
+        // nombre entre comillas conserva el que puso el docente al subirlo
+        header('Content-Disposition: inline; filename="'
+             . str_replace('"', '', $justificacion['archivo_nombre'] ?: 'justificante') . '"');
+        // Nada de cache: es un documento personal y no debe quedarse guardado
+        header('Cache-Control: private, no-store');
+        // El navegador no debe adivinar el tipo: un archivo mal declarado no
+        // puede terminar interpretandose como HTML con guiones dentro
+        header('X-Content-Type-Options: nosniff');
+
+        readfile($ruta);
+        exit;
+    }
+
+    /** Vacia lo que hubiera pendiente de enviar antes de escribir un archivo */
+    private function limpiarBufferSalida(): void
+    {
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
     }
 
     /** Valida que la asistencia indicada pertenezca a una clase del docente */

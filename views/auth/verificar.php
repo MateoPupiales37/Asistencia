@@ -51,7 +51,7 @@ require dirname(__DIR__) . '/layouts/header.php';
                 ¿Perdiste el teléfono? El administrador puede retirarte la verificación
                 para que vuelvas a configurarla.
             </p>
-            <a href="<?= $base ?>/acceso">&larr; Volver al acceso</a>
+            <a href="<?= $base . htmlspecialchars($volver ?? '/acceso/docente') ?>">&larr; Volver al acceso</a>
         </div>
     </div>
 </div>

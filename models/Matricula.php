@@ -59,6 +59,40 @@ class Matricula
     }
 
     /** Cuantos se matricularon en las ultimas 24 horas */
+    /**
+     * Los matriculados que NO marcaron asistencia en una clase.
+     *
+     * Es la lista que el docente necesita para justificar faltas: hasta ahora
+     * el sistema solo sabia decir quien vino, y a quien falto habia que
+     * buscarlo comparando a mano la lista de curso con la de asistentes.
+     *
+     * Trae tambien la justificacion, si ya se registro, para que la pantalla
+     * distinga de un vistazo la falta justificada de la que no lo esta.
+     */
+    public static function ausentesDeSesion(int $sesionId): array
+    {
+        $db = Database::conectar();
+        $stmt = $db->prepare(
+            "SELECT e.id, e.codigo, e.cedula, e.nombre, e.apellido, e.semestre, e.telefono,
+                    j.id     AS justificacion_id,
+                    j.tipo   AS justificacion_tipo,
+                    j.detalle AS justificacion_detalle,
+                    j.archivo AS justificacion_archivo,
+                    j.archivo_nombre AS justificacion_archivo_nombre
+             FROM sesiones s
+             JOIN matriculas m  ON m.curso_id = s.curso_id
+             JOIN estudiantes e ON e.id = m.estudiante_id
+             LEFT JOIN asistencias a
+                    ON a.sesion_id = s.id AND a.estudiante_id = e.id
+             LEFT JOIN justificaciones j
+                    ON j.sesion_id = s.id AND j.estudiante_id = e.id
+             WHERE s.id = ? AND a.id IS NULL AND e.activo = 1
+             ORDER BY e.apellido ASC, e.nombre ASC"
+        );
+        $stmt->execute([$sesionId]);
+        return $stmt->fetchAll();
+    }
+
     public static function contarNuevos(int $cursoId): int
     {
         $db = Database::conectar();

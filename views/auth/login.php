@@ -1,33 +1,46 @@
 <?php
 /**
- * Acceso del personal: docentes y administradores.
+ * Acceso del personal. La MISMA vista sirve a las dos puertas —docente y
+ * administración— y el controlador le pasa cuál es en $puerta.
+ *
+ * Es una sola plantilla y no dos porque el formulario es idéntico: lo único
+ * que cambia son el título, el color del distintivo y a dónde se envía. Dos
+ * copias del mismo formulario habrían empezado a separarse en cuanto se
+ * tocara una sola de ellas.
  *
  * Deliberadamente NO muestra credenciales de ejemplo ni el formato del correo
- * institucional. Esa caja de "usar estas credenciales" existía antes y era un
+ * institucional. Esa caja de "usa estas credenciales" existía antes y era un
  * problema real: publicaba en una página pública una cuenta de administrador
- * que funcionaba. Las credenciales de prueba están ahora en CREDENCIALES.md,
- * fuera del alcance del navegador.
+ * que funcionaba. Las credenciales están ahora en CREDENCIALES.md, fuera del
+ * alcance del navegador.
  *
  * Tampoco distingue si falló el correo o la contraseña: decir "ese correo no
  * existe" permitiría averiguar qué cuentas son válidas probando una por una.
  */
 
-$titulo = 'Acceso Institucional - ISTPET';
-$vista  = 'acceso';
+$esAdmin = ($puerta ?? 'docente') === 'admin';
+
+$titulo = ($tituloPuerta ?? 'Acceso Institucional') . ' - ISTPET';
+$vista  = 'acceso-' . ($puerta ?? 'docente');
 $ocultarNavbar = true;
 require dirname(__DIR__) . '/layouts/header.php';
 ?>
 
 <div class="auth-page-bg">
-    <div class="auth-card">
+    <div class="auth-card auth-card-<?= htmlspecialchars($puerta ?? 'docente') ?>">
         <div class="auth-top-bar">
             <a href="<?= $base ?>/" class="auth-top-back">&larr; Volver al inicio</a>
         </div>
 
         <div class="auth-logo-wrap">
             <img src="<?= $base ?>/assets/img/logo-istpet.jpg" alt="Logo ISTPET" class="auth-logo-img">
-            <h2 class="auth-title">Acceso Institucional</h2>
-            <p class="auth-subtitle">Docentes y administradores</p>
+
+            <span class="auth-distintivo <?= $esAdmin ? 'es-admin' : 'es-docente' ?>">
+                <?= $esAdmin ? 'ADMINISTRACIÓN' : 'DOCENTE' ?>
+            </span>
+
+            <h2 class="auth-title"><?= htmlspecialchars($tituloPuerta ?? ($esAdmin ? 'Acceso Administración' : 'Acceso Docente')) ?></h2>
+            <p class="auth-subtitle"><?= htmlspecialchars($subtitulo ?? '') ?></p>
         </div>
 
         <?php if (!empty($mensaje)): ?>
@@ -37,7 +50,7 @@ require dirname(__DIR__) . '/layouts/header.php';
             <div class="alert alert-error"><span><?= htmlspecialchars($error) ?></span></div>
         <?php endif; ?>
 
-        <form action="<?= $base ?>/acceso" method="POST" autocomplete="on" data-sin-ajax>
+        <form action="<?= $base . htmlspecialchars($accion ?? '/acceso/docente') ?>" method="POST" autocomplete="on" data-sin-ajax>
             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8') ?>">
 
             <div class="form-group">
@@ -89,6 +102,12 @@ require dirname(__DIR__) . '/layouts/header.php';
 
         <div class="auth-footer">
             <p class="mb-2">
+                ¿Esta no es tu entrada?
+                <a href="<?= $base . htmlspecialchars($otraRuta ?? '/acceso/admin') ?>" class="text-primary font-bold">
+                    <?= htmlspecialchars($otroTexto ?? 'Otra entrada') ?> &rarr;
+                </a>
+            </p>
+            <p class="mb-0">
                 ¿Eres estudiante?
                 <a href="<?= $base ?>/asistencia" class="text-primary font-bold">Registra tu asistencia aquí &rarr;</a>
             </p>
