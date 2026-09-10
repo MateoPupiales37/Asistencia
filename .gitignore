@@ -26,3 +26,7 @@ storage/uploads/*
 storage/justificantes/*
 !storage/justificantes/.gitkeep
 !storage/justificantes/.htaccess
+
+# Certificado del aula: la clave privada nunca sale del equipo
+certificado/*.key
+certificado/*.crt

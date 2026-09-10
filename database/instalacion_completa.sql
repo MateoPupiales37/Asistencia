@@ -290,8 +290,12 @@ ON DUPLICATE KEY UPDATE nombre = VALUES(nombre);
 -- asi que el sistema arranca con uno abierto que cubre el ano en curso. Los
 -- dos se corrigen despues desde el panel: Periodo academico -> Editar.
 -- =====================================================================
-INSERT INTO carreras (codigo, nombre, activa)
-VALUES ('DSW', 'Desarrollo de Software', 1)
+INSERT INTO carreras (codigo, nombre, activa) VALUES
+('DSW', 'Desarrollo de Software', 1),
+('MEA', 'Mecánica Automotriz', 1),
+('DIG', 'Diseño Gráfico', 1),
+('END', 'Entrenamiento Deportivo', 1),
+('EDI', 'Educación Inicial', 1)
 ON DUPLICATE KEY UPDATE nombre = VALUES(nombre);
 
 INSERT INTO periodos (nombre, fecha_inicio, fecha_fin, activo)

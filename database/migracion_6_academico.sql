@@ -164,3 +164,17 @@ ALTER TABLE asistencias
     MODIFY COLUMN motivo ENUM('Cita medica','Emergencia medica','Llamado de coordinacion',
                               'Mal comportamiento','Permiso del docente','Otro')
         DEFAULT NULL;
+
+-- ---------------------------------------------------------------------
+-- CARRERAS DEL INSTITUTO
+--
+-- Las cinco que oferta el ISTPET. El administrador puede agregar, renombrar
+-- o archivar desde el panel: esto es solo la carga inicial.
+-- ---------------------------------------------------------------------
+INSERT INTO carreras (codigo, nombre, activa) VALUES
+('DSW', 'Desarrollo de Software', 1),
+('MEA', 'Mecánica Automotriz', 1),
+('DIG', 'Diseño Gráfico', 1),
+('END', 'Entrenamiento Deportivo', 1),
+('EDI', 'Educación Inicial', 1)
+ON DUPLICATE KEY UPDATE nombre = VALUES(nombre);

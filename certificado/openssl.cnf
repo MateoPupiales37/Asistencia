@@ -1,0 +1,39 @@
+# Certificado autofirmado para el aula.
+#
+# El navegador solo entrega la CAMARA y la UBICACION en "contextos seguros":
+# HTTPS o localhost. Por http://192.168.x.x las niega sin preguntar, y por eso
+# al alumno le aparecia el aviso de "sube una foto del QR".
+#
+# El certificado que trae XAMPP de fabrica caduco en 2019 y era para
+# "localhost", asi que no servia para entrar por la IP. Este lleva dentro las
+# dos IPv4 del equipo y dura tres anos.
+#
+# Sigue siendo AUTOFIRMADO: el telefono avisara una vez de que el sitio no es
+# de confianza y hay que tocar "Avanzado - Continuar". No hay forma de evitar
+# ese aviso sin un dominio propio y un certificado de una autoridad publica.
+
+[req]
+default_bits       = 2048
+prompt             = no
+default_md         = sha256
+distinguished_name = dn
+x509_extensions    = ext
+
+[dn]
+C  = EC
+ST = Pichincha
+L  = Quito
+O  = Instituto Superior Tecnologico Mayor Pedro Traversari
+CN = 192.168.1.38
+
+[ext]
+subjectAltName   = @nombres
+basicConstraints = critical, CA:FALSE
+keyUsage         = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+
+[nombres]
+IP.1  = 192.168.1.38
+IP.2  = 192.168.56.1
+IP.3  = 127.0.0.1
+DNS.1 = localhost
