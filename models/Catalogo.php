@@ -11,9 +11,16 @@ class Catalogo
     // Minutos que dura un codigo QR antes de caducar
     public const MINUTOS_QR = 5;
 
-    // Ambientes en los que se puede dictar una misma materia.
-    // Deben coincidir con el ENUM ambiente de la tabla cursos.
-    public const AMBIENTES = ['Aula', 'Laboratorio', 'Aula Interactiva'];
+    /*
+     * Ambientes en los que se puede dictar una materia. Deben coincidir con el
+     * ENUM ambiente de la tabla cursos.
+     *
+     * OJO: esta es la lista de lo que EXISTE, no de lo que se le ofrece a cada
+     * quien. El taller solo lo usa Mecanica Automotriz, y ofrecerselo a
+     * Educacion Inicial seria una opcion mas para equivocarse. Que ambientes
+     * ve cada carrera lo dice Carrera::ambientes().
+     */
+    public const AMBIENTES = ['Aula', 'Laboratorio', 'Aula Interactiva', 'Taller'];
 
     // Los SEMESTRES ya no viven aqui: los administra el administrador desde
     // el panel y se leen de la tabla 'semestres'. Ver el modelo Semestre.

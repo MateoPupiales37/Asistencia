@@ -1,6 +1,7 @@
 <?php
 
 require_once dirname(__DIR__) . '/config/database.php';
+require_once __DIR__ . '/Catalogo.php';
 
 /**
  * Modelo Carrera.
@@ -15,6 +16,57 @@ class Carrera
 {
     private static ?array $cache = null;
 
+    /**
+     * Ambientes que usa una carrera, tal como los guarda la columna SET.
+     *
+     * Si la fila viene sin nada (una carrera creada antes de que existiera la
+     * columna), se devuelven los tres de siempre: es preferible ofrecer de mas
+     * que dejar el desplegable vacio y bloquear la asignacion.
+     *
+     * @return string[]
+     */
+    public static function ambientes(?array $carrera): array
+    {
+        $guardados = trim((string)($carrera['ambientes'] ?? ''));
+
+        if ($guardados === '') {
+            return ['Aula', 'Laboratorio', 'Aula Interactiva'];
+        }
+
+        // Se filtra contra el catalogo por si la columna quedo con un valor
+        // que el sistema ya no reconoce
+        return array_values(array_intersect(
+            Catalogo::AMBIENTES,
+            array_map('trim', explode(',', $guardados))
+        ));
+    }
+
+    /** Los ambientes que le tocan a una materia, segun su carrera */
+    public static function ambientesDe(?int $carreraId): array
+    {
+        return self::ambientes(self::buscarPorId($carreraId));
+    }
+
+    /**
+     * Limpia la lista que llega del formulario y la deja lista para la
+     * columna SET. Nunca devuelve vacio: una carrera sin ningun ambiente no
+     * podria tener cursos, y eso no es algo que se quiera poder guardar por
+     * descuido.
+     */
+    public static function normalizarAmbientes($elegidos): string
+    {
+        $validos = array_values(array_intersect(
+            Catalogo::AMBIENTES,
+            is_array($elegidos) ? $elegidos : []
+        ));
+
+        if (empty($validos)) {
+            $validos = ['Aula'];
+        }
+
+        return implode(',', $validos);
+    }
+
     /** @return array<int,array{id:int,codigo:string,nombre:string,activa:int}> */
     public static function listar(bool $soloActivas = true): array
     {
@@ -23,7 +75,7 @@ class Carrera
         }
 
         $db  = Database::conectar();
-        $sql = "SELECT id, codigo, nombre, activa FROM carreras";
+        $sql = "SELECT id, codigo, nombre, ambientes, activa FROM carreras";
 
         if ($soloActivas) {
             $sql .= " WHERE activa = 1";
@@ -44,7 +96,7 @@ class Carrera
     {
         $db = Database::conectar();
         return $db->query(
-            "SELECT c.id, c.codigo, c.nombre, c.activa,
+            "SELECT c.id, c.codigo, c.nombre, c.ambientes, c.activa,
                     (SELECT COUNT(*) FROM materias m
                       WHERE m.carrera_id = c.id AND m.activa = 1) AS total_materias
              FROM carreras c
@@ -84,30 +136,60 @@ class Carrera
     }
 
     /** Devuelve 'ok', 'duplicada' o 'error' */
-    public static function crear(string $codigo, string $nombre): string
+    public static function crear(string $codigo, string $nombre, string $ambientes): string
     {
         self::$cache = null;
         $db = Database::conectar();
 
         try {
-            $stmt = $db->prepare("INSERT INTO carreras (codigo, nombre, activa) VALUES (?, ?, 1)");
-            return $stmt->execute([strtoupper(trim($codigo)), trim($nombre)]) ? 'ok' : 'error';
+            $stmt = $db->prepare(
+                "INSERT INTO carreras (codigo, nombre, ambientes, activa) VALUES (?, ?, ?, 1)"
+            );
+            return $stmt->execute([strtoupper(trim($codigo)), trim($nombre), $ambientes]) ? 'ok' : 'error';
         } catch (PDOException $e) {
             return ($e->getCode() === '23000') ? 'duplicada' : 'error';
         }
     }
 
-    public static function actualizar(int $id, string $codigo, string $nombre, int $activa): string
-    {
+    public static function actualizar(
+        int $id,
+        string $codigo,
+        string $nombre,
+        string $ambientes,
+        int $activa
+    ): string {
         self::$cache = null;
         $db = Database::conectar();
 
         try {
-            $stmt = $db->prepare("UPDATE carreras SET codigo = ?, nombre = ?, activa = ? WHERE id = ?");
-            return $stmt->execute([strtoupper(trim($codigo)), trim($nombre), $activa, $id]) ? 'ok' : 'error';
+            $stmt = $db->prepare(
+                "UPDATE carreras SET codigo = ?, nombre = ?, ambientes = ?, activa = ? WHERE id = ?"
+            );
+            $ok = $stmt->execute([strtoupper(trim($codigo)), trim($nombre), $ambientes, $activa, $id]);
+            return $ok ? 'ok' : 'error';
         } catch (PDOException $e) {
             return ($e->getCode() === '23000') ? 'duplicada' : 'error';
         }
+    }
+
+    /**
+     * ¿Alguna materia de esta carrera usa ya este ambiente?
+     *
+     * Se consulta antes de quitarle un ambiente a una carrera: si hay cursos
+     * dictandose ahi, retirarlo dejaria esos cursos apuntando a un ambiente
+     * que la carrera dice no usar.
+     */
+    public static function ambienteEnUso(int $carreraId, string $ambiente): bool
+    {
+        $db = Database::conectar();
+        $stmt = $db->prepare(
+            "SELECT c.id FROM cursos c
+             JOIN materias m ON c.materia_id = m.id
+             WHERE m.carrera_id = ? AND c.ambiente = ? AND c.activo = 1
+             LIMIT 1"
+        );
+        $stmt->execute([$carreraId, $ambiente]);
+        return (bool)$stmt->fetch();
     }
 
     public static function contar(): int

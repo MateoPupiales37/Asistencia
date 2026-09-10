@@ -49,6 +49,7 @@ CREATE TABLE `carreras` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `codigo` varchar(20) NOT NULL,
   `nombre` varchar(120) NOT NULL,
+  `ambientes` set('Aula','Laboratorio','Aula Interactiva','Taller') NOT NULL DEFAULT 'Aula,Laboratorio,Aula Interactiva',
   `activa` tinyint(1) NOT NULL DEFAULT 1,
   `creado_en` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
@@ -75,7 +76,7 @@ CREATE TABLE `cursos` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `materia_id` int(11) NOT NULL,
   `docente_id` int(11) NOT NULL,
-  `ambiente` enum('Aula','Laboratorio','Aula Interactiva') NOT NULL DEFAULT 'Aula',
+  `ambiente` enum('Aula','Laboratorio','Aula Interactiva','Taller') NOT NULL DEFAULT 'Aula',
   `semestre` varchar(30) NOT NULL,
   `activo` tinyint(1) NOT NULL DEFAULT 1,
   `creado_en` timestamp NOT NULL DEFAULT current_timestamp(),
@@ -290,13 +291,15 @@ ON DUPLICATE KEY UPDATE nombre = VALUES(nombre);
 -- asi que el sistema arranca con uno abierto que cubre el ano en curso. Los
 -- dos se corrigen despues desde el panel: Periodo academico -> Editar.
 -- =====================================================================
-INSERT INTO carreras (codigo, nombre, activa) VALUES
-('DSW', 'Desarrollo de Software', 1),
-('MEA', 'Mecánica Automotriz', 1),
-('DIG', 'Diseño Gráfico', 1),
-('END', 'Entrenamiento Deportivo', 1),
-('EDI', 'Educación Inicial', 1)
-ON DUPLICATE KEY UPDATE nombre = VALUES(nombre);
+-- Mecánica trabaja en el TALLER; las demás, en aula y laboratorio. Cada
+-- carrera declara los suyos y el formulario de asignación ofrece solo esos.
+INSERT INTO carreras (codigo, nombre, ambientes, activa) VALUES
+('DSW', 'Desarrollo de Software',  'Aula,Laboratorio,Aula Interactiva', 1),
+('MEA', 'Mecánica Automotriz',     'Aula,Laboratorio,Aula Interactiva,Taller', 1),
+('DIG', 'Diseño Gráfico',          'Aula,Laboratorio,Aula Interactiva', 1),
+('END', 'Entrenamiento Deportivo', 'Aula,Laboratorio,Aula Interactiva', 1),
+('EDI', 'Educación Inicial',       'Aula,Laboratorio,Aula Interactiva', 1)
+ON DUPLICATE KEY UPDATE nombre = VALUES(nombre), ambientes = VALUES(ambientes);
 
 INSERT INTO periodos (nombre, fecha_inicio, fecha_fin, activo)
 VALUES (CONCAT(YEAR(CURDATE()), '-1'),

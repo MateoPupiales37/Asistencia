@@ -1025,6 +1025,13 @@ code {
     background: var(--color-accent-light);
     color: #8a7226;
 }
+/* El taller de Mecanica: color propio para que no se confunda con el
+   laboratorio, que es donde se registraban estas clases a falta de algo
+   mejor y hacia que el reporte dijera una cosa distinta de la que pasaba. */
+.curso-ambiente.amb-taller {
+    background: #ffe8d6;
+    color: #9a4a12;
+}
 
 .curso-materia {
     font-size: .98rem;
@@ -4463,6 +4470,43 @@ body.portada-body .footer {
 
 .enlace-respaldo:hover {
     color: var(--color-primary-dark, #1b3a80);
+}
+
+/* Grupo de casillas: los ambientes que usa una carrera */
+.grupo-casillas {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 10px 14px 12px;
+    margin: 0 0 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+}
+
+.grupo-casillas legend {
+    font-size: .74rem;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-muted);
+    padding: 0 6px;
+}
+
+.casilla {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: .87rem;
+    cursor: pointer;
+    /* Area de toque comoda en el celular */
+    padding: 4px 0;
+}
+
+.casilla input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--color-primary);
+    cursor: pointer;
 }
 
 /* Distintivo del periodo en la barra de navegacion del administrador */

@@ -174,18 +174,22 @@ $periodosAbiertos = array_values(array_filter($periodos, static fn($p) => (int)$
                             <?php if (!$inactiva && !$tieneDocente): ?>
                                 <button type="button" class="btn btn-sm btn-dorado"
                                         onclick='asignar(<?= json_encode([
-                                            "id"       => (int)$m["id"],
-                                            "nombre"   => $m["nombre"],
-                                            "semestre" => $m["semestre"]
+                                            "id"        => (int)$m["id"],
+                                            "nombre"    => $m["nombre"],
+                                            "semestre"  => $m["semestre"],
+                                            "carrera"   => $m["carrera"] ?? "esta carrera",
+                                            "ambientes" => Carrera::ambientesDe($m["carrera_id"] ? (int)$m["carrera_id"] : null)
                                         ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>)'>
                                     + Asignar docente
                                 </button>
                             <?php elseif (!$inactiva): ?>
                                 <button type="button" class="btn btn-sm btn-outline"
                                         onclick='asignar(<?= json_encode([
-                                            "id"       => (int)$m["id"],
-                                            "nombre"   => $m["nombre"],
-                                            "semestre" => $m["semestre"]
+                                            "id"        => (int)$m["id"],
+                                            "nombre"    => $m["nombre"],
+                                            "semestre"  => $m["semestre"],
+                                            "carrera"   => $m["carrera"] ?? "esta carrera",
+                                            "ambientes" => Carrera::ambientesDe($m["carrera_id"] ? (int)$m["carrera_id"] : null)
                                         ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>)'
                                         title="El mismo docente puede tenerla en otro ambiente">
                                     + Otro ambiente
@@ -431,14 +435,17 @@ $periodosAbiertos = array_values(array_filter($periodos, static fn($p) => (int)$
 
             <div class="form-group mb-6">
                 <label for="asignarAmbiente" class="form-label">Ambiente <span class="text-danger">*</span></label>
-                <select id="asignarAmbiente" name="ambiente" class="form-select" required>
-                    <?php foreach ($ambientes as $a): ?>
-                        <option value="<?= htmlspecialchars($a, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($a) ?></option>
-                    <?php endforeach; ?>
-                </select>
+                <!--
+                    Las opciones las pone el JavaScript segun la CARRERA de la
+                    materia: Mecanica trabaja en el taller y las demas no, asi
+                    que una lista fija para todas seria una opcion mas para
+                    equivocarse.
+                -->
+                <select id="asignarAmbiente" name="ambiente" class="form-select" required></select>
                 <small class="form-ayuda">
+                    Solo aparecen los ambientes que usa <strong id="asignarCarreraNombre"></strong>.
                     El mismo docente puede repetir la materia en otro ambiente: la teoría
-                    en el Aula y la práctica en el Laboratorio son dos cursos.
+                    en el Aula y la práctica en el Taller son dos cursos.
                 </small>
             </div>
 
@@ -603,13 +610,29 @@ function editarMateria(m) {
     abrirModal('modalMateria');
 }
 
-/** Abre el modal de asignación con la materia y su semestre ya resueltos */
+/**
+ * Abre el modal de asignación con la materia ya resuelta.
+ *
+ * Los ambientes se rehacen en cada apertura porque dependen de la CARRERA de
+ * la materia: el taller solo aparece para Mecánica. El servidor lo vuelve a
+ * comprobar, porque una lista armada en el navegador se edita en dos clics.
+ */
 function asignar(m) {
     const f = document.getElementById('formAsignar');
     f.reset();
     document.getElementById('asignarMateriaId').value = m.id;
     document.getElementById('asignarMateriaNombre').textContent = m.nombre;
     document.getElementById('asignarMateriaSemestre').textContent = m.semestre;
+    document.getElementById('asignarCarreraNombre').textContent = m.carrera;
+
+    const select = document.getElementById('asignarAmbiente');
+    select.innerHTML = '';
+    (m.ambientes || []).forEach(a => {
+        const opcion = document.createElement('option');
+        opcion.value = a;
+        opcion.textContent = a;
+        select.appendChild(opcion);
+    });
 
     abrirModal('modalAsignar');
     document.getElementById('asignarDocente').focus();

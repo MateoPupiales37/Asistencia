@@ -18,6 +18,12 @@ require dirname(__DIR__) . '/layouts/header.php';
 $tok     = htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8');
 $hoy     = date('Y-m-d');
 $activos = array_values(array_filter($periodos, static fn($p) => (int)$p['activo'] === 1));
+
+// Los cuatro ambientes que existen. Cada carrera marca los suyos: el taller
+// solo lo usa Mecanica, y ofrecerselo a Educacion Inicial seria una opcion
+// mas para equivocarse al asignar un docente.
+require_once dirname(dirname(__DIR__)) . '/models/Catalogo.php';
+$todosAmbientes = Catalogo::AMBIENTES;
 ?>
 
 <nav class="breadcrumb">
@@ -265,19 +271,27 @@ $activos = array_values(array_filter($periodos, static fn($p) => (int)$p['activo
                     <tr>
                         <th>Código</th>
                         <th>Carrera</th>
+                        <th>Ambientes</th>
                         <th class="text-right">Materias</th>
                         <th>Estado</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($carreras)): ?>
-                        <tr><td colspan="4" class="text-muted">Todavía no hay carreras cargadas.</td></tr>
+                        <tr><td colspan="5" class="text-muted">Todavía no hay carreras cargadas.</td></tr>
                     <?php endif; ?>
 
                     <?php foreach ($carreras as $c): ?>
                         <tr>
                             <td><strong><?= htmlspecialchars($c['codigo']) ?></strong></td>
                             <td><?= htmlspecialchars($c['nombre']) ?></td>
+                            <td>
+                                <?php foreach (Carrera::ambientes($c) as $a): ?>
+                                    <span class="curso-ambiente amb-<?= strtolower(str_replace(' ', '-', $a)) ?>">
+                                        <?= htmlspecialchars($a) ?>
+                                    </span>
+                                <?php endforeach; ?>
+                            </td>
                             <td class="text-right"><?= (int)$c['total_materias'] ?></td>
                             <td>
                                 <span class="badge <?= (int)$c['activa'] === 1 ? 'badge-success' : 'badge-neutral' ?>">
@@ -286,11 +300,12 @@ $activos = array_values(array_filter($periodos, static fn($p) => (int)$p['activo
                             </td>
                         </tr>
                         <tr>
-                            <td colspan="4">
-                                <form action="<?= $base ?>/admin/carreras/actualizar" method="POST" class="form-fila">
+                            <td colspan="5">
+                                <form action="<?= $base ?>/admin/carreras/actualizar" method="POST">
                                     <input type="hidden" name="csrf_token" value="<?= $tok ?>">
                                     <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
 
+                                    <div class="form-fila">
                                     <div class="form-group">
                                         <label class="form-label" for="ccod<?= (int)$c['id'] ?>">Código</label>
                                         <input type="text" id="ccod<?= (int)$c['id'] ?>" name="codigo" class="form-control"
@@ -308,10 +323,22 @@ $activos = array_values(array_filter($periodos, static fn($p) => (int)$p['activo
                                             <option value="0" <?= (int)$c['activa'] === 0 ? 'selected' : '' ?>>Archivada</option>
                                         </select>
                                     </div>
-                                    <div class="form-group">
-                                        <label class="form-label">&nbsp;</label>
-                                        <button type="submit" class="btn btn-outline btn-block">Guardar</button>
-                                    </div>
+                                </div>
+
+                                <?php $suyos = Carrera::ambientes($c); ?>
+                                <fieldset class="grupo-casillas">
+                                    <legend>Ambientes donde dicta clases</legend>
+                                    <?php foreach ($todosAmbientes as $a): ?>
+                                        <label class="casilla">
+                                            <input type="checkbox" name="ambientes[]"
+                                                   value="<?= htmlspecialchars($a, ENT_QUOTES, 'UTF-8') ?>"
+                                                   <?= in_array($a, $suyos, true) ? 'checked' : '' ?>>
+                                            <span><?= htmlspecialchars($a) ?></span>
+                                        </label>
+                                    <?php endforeach; ?>
+                                </fieldset>
+
+                                <button type="submit" class="btn btn-outline btn-sm">Guardar carrera</button>
                                 </form>
                             </td>
                         </tr>
@@ -320,9 +347,10 @@ $activos = array_values(array_filter($periodos, static fn($p) => (int)$p['activo
             </table>
         </div>
 
-        <form action="<?= $base ?>/admin/carreras/crear" method="POST" class="form-fila">
+        <form action="<?= $base ?>/admin/carreras/crear" method="POST">
             <input type="hidden" name="csrf_token" value="<?= $tok ?>">
 
+            <div class="form-fila">
             <div class="form-group">
                 <label class="form-label" for="carrera_nombre">Nueva carrera <span class="text-danger">*</span></label>
                 <input type="text" id="carrera_nombre" name="nombre" class="form-control"
@@ -336,10 +364,21 @@ $activos = array_values(array_filter($periodos, static fn($p) => (int)$p['activo
                        oninput="this.value = this.value.toUpperCase().replace(/[^A-Z0-9-]/g,''); this.dataset.tocado = '1';">
                 <small class="form-ayuda">Se propone solo con las iniciales.</small>
             </div>
-            <div class="form-group">
-                <label class="form-label">&nbsp;</label>
-                <button type="submit" class="btn btn-primary btn-block">Agregar carrera</button>
-            </div>
+        </div>
+
+        <fieldset class="grupo-casillas">
+            <legend>Ambientes donde dicta clases</legend>
+            <?php foreach ($todosAmbientes as $a): ?>
+                <label class="casilla">
+                    <input type="checkbox" name="ambientes[]"
+                           value="<?= htmlspecialchars($a, ENT_QUOTES, 'UTF-8') ?>"
+                           <?= $a === 'Taller' ? '' : 'checked' ?>>
+                    <span><?= htmlspecialchars($a) ?></span>
+                </label>
+            <?php endforeach; ?>
+        </fieldset>
+
+        <button type="submit" class="btn btn-primary">Agregar carrera</button>
         </form>
     </div>
 </div>

@@ -886,8 +886,17 @@ class AdminController extends BaseController
         if ((int)$docente['activo'] === 0) {
             $this->redirigirConError('Esa cuenta está desactivada: no se le puede asignar una materia.', '/admin/materias');
         }
-        if (!Catalogo::esAmbienteValido($ambiente)) {
-            $this->redirigirConError('Selecciona un ambiente válido.', '/admin/materias');
+        // El ambiente no solo tiene que existir: tiene que ser de los que usa
+        // ESA carrera. Mecanica trabaja en el taller y las demas no, asi que
+        // ofrecerselo a todas era una opcion mas para equivocarse.
+        $permitidos = Carrera::ambientesDe($materia['carrera_id'] ? (int)$materia['carrera_id'] : null);
+
+        if (!in_array($ambiente, $permitidos, true)) {
+            $this->redirigirConError(
+                'La carrera ' . ($materia['carrera'] ?? '') . ' no usa el ambiente "' . $ambiente
+                . '". Los suyos son: ' . implode(', ', $permitidos) . '.',
+                '/admin/materias'
+            );
         }
 
         // REGLA ACADEMICA: una materia pertenece a UN solo docente.
@@ -1248,7 +1257,8 @@ class AdminController extends BaseController
             $this->redirigirConError('El código de la carrera debe tener entre 2 y 20 caracteres.', '/admin/periodo');
         }
 
-        $resultado = Carrera::crear($codigo, $nombre);
+        $ambientes = Carrera::normalizarAmbientes($_POST['ambientes'] ?? []);
+        $resultado = Carrera::crear($codigo, $nombre, $ambientes);
 
         if ($resultado === 'duplicada') {
             $this->redirigirConError("Ya existe una carrera con ese nombre o ese código.", '/admin/periodo');
@@ -1257,7 +1267,10 @@ class AdminController extends BaseController
             $this->redirigirConError('No se pudo crear la carrera.', '/admin/periodo');
         }
 
-        $this->redirigirConMensaje("Carrera \"{$nombre}\" creada.", '/admin/periodo');
+        $this->redirigirConMensaje(
+            "Carrera \"{$nombre}\" creada. Sus materias se dictarán en: " . str_replace(',', ', ', $ambientes) . '.',
+            '/admin/periodo'
+        );
     }
 
     public function actualizarCarrera(): void
@@ -1280,7 +1293,25 @@ class AdminController extends BaseController
             $this->redirigirConError('El código de la carrera debe tener entre 2 y 20 caracteres.', '/admin/periodo');
         }
 
-        $resultado = Carrera::actualizar($id, $codigo, $nombre, $activa);
+        $ambientes = Carrera::normalizarAmbientes($_POST['ambientes'] ?? []);
+
+        // Quitarle un ambiente donde ya hay cursos dictandose dejaria esos
+        // cursos en un ambiente que la carrera dice no usar: la pantalla los
+        // seguiria mostrando, pero no se podria crear otro igual y nadie
+        // entenderia por que.
+        $retirados = array_diff(Carrera::ambientesDe($id), explode(',', $ambientes));
+
+        foreach ($retirados as $ambiente) {
+            if (Carrera::ambienteEnUso($id, $ambiente)) {
+                $this->redirigirConError(
+                    'No se puede quitar "' . $ambiente . '": esta carrera ya tiene materias '
+                    . 'asignadas en ese ambiente. Retira primero esas asignaciones.',
+                    '/admin/periodo'
+                );
+            }
+        }
+
+        $resultado = Carrera::actualizar($id, $codigo, $nombre, $ambientes, $activa);
 
         if ($resultado === 'duplicada') {
             $this->redirigirConError('Ese nombre o código ya pertenece a otra carrera.', '/admin/periodo');
