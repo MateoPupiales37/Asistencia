@@ -287,7 +287,7 @@ $todosAmbientes = Catalogo::AMBIENTES;
                             <td><?= htmlspecialchars($c['nombre']) ?></td>
                             <td>
                                 <?php foreach (Carrera::ambientes($c) as $a): ?>
-                                    <span class="curso-ambiente amb-<?= strtolower(str_replace(' ', '-', $a)) ?>">
+                                    <span class="curso-ambiente amb-<?= Catalogo::claseAmbiente($a) ?>">
                                         <?= htmlspecialchars($a) ?>
                                     </span>
                                 <?php endforeach; ?>

@@ -22,6 +22,8 @@
 --     mysql -u root --default-character-set=utf8mb4 < migracion_7_taller.sql
 -- =====================================================================
 
+SET NAMES utf8mb4;
+
 USE asistencia_qr;
 
 -- ---------------------------------------------------------------------

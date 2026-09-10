@@ -20,7 +20,14 @@ class Catalogo
      * Educacion Inicial seria una opcion mas para equivocarse. Que ambientes
      * ve cada carrera lo dice Carrera::ambientes().
      */
-    public const AMBIENTES = ['Aula', 'Laboratorio', 'Aula Interactiva', 'Taller'];
+    public const AMBIENTES = [
+        'Aula',
+        'Aula Interactiva',
+        'Laboratorio',
+        'Taller',            // Mecanica Automotriz
+        'Piscina',           // Entrenamiento Deportivo
+        'Área Deportiva'     // Entrenamiento Deportivo
+    ];
 
     // Los SEMESTRES ya no viven aqui: los administra el administrador desde
     // el panel y se leen de la tabla 'semestres'. Ver el modelo Semestre.
@@ -72,6 +79,24 @@ class Catalogo
     public static function esAmbienteValido(?string $valor): bool
     {
         return in_array($valor, self::AMBIENTES, true);
+    }
+
+    /**
+     * Sufijo de la clase CSS de un ambiente: "Área Deportiva" -> "area-deportiva".
+     *
+     * Existe porque las vistas lo armaban con strtolower(str_replace(...)), y
+     * strtolower trabaja byte a byte: la Á de "Área" no la baja a minuscula y
+     * la clase salia "Área-deportiva", que no casa con ninguna regla del CSS.
+     * Aqui se quitan las tildes primero.
+     */
+    public static function claseAmbiente(?string $ambiente): string
+    {
+        $sinTildes = strtr((string)$ambiente, [
+            'á'=>'a','é'=>'e','í'=>'i','ó'=>'o','ú'=>'u','ü'=>'u','ñ'=>'n',
+            'Á'=>'a','É'=>'e','Í'=>'i','Ó'=>'o','Ú'=>'u','Ü'=>'u','Ñ'=>'n'
+        ]);
+
+        return strtolower(preg_replace('/[^A-Za-z0-9]+/', '-', trim($sinTildes)));
     }
 
     /** @return string[] Nombres de los semestres activos, en orden */

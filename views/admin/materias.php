@@ -230,7 +230,7 @@ $periodosAbiertos = array_values(array_filter($periodos, static fn($p) => (int)$
                                                 <?= htmlspecialchars(trim($c['docente_nombre'] . ' ' . $c['docente_apellido'])) ?>
                                             </td>
                                             <td>
-                                                <span class="curso-ambiente amb-<?= strtolower(str_replace(' ', '-', $c['ambiente'])) ?>">
+                                                <span class="curso-ambiente amb-<?= Catalogo::claseAmbiente($c['ambiente']) ?>">
                                                     <?= htmlspecialchars($c['ambiente']) ?>
                                                 </span>
                                             </td>

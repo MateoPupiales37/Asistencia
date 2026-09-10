@@ -1032,6 +1032,17 @@ code {
     background: #ffe8d6;
     color: #9a4a12;
 }
+/* Los dos de Entrenamiento Deportivo. Cada ambiente lleva su color porque en
+   el historial de clases es lo unico que distingue de un vistazo una clase de
+   piscina de una de aula. */
+.curso-ambiente.amb-piscina {
+    background: #d9f2fb;
+    color: #0e6a86;
+}
+.curso-ambiente.amb-area-deportiva {
+    background: #e3f5df;
+    color: #2f6b28;
+}
 
 .curso-materia {
     font-size: .98rem;

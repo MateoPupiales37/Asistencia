@@ -554,7 +554,7 @@ $tok = htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8');
         <button type="button" class="btn btn-outline btn-sm" onclick="abrirModal('modalCurso')">+ Nuevo Curso</button>
     </div>
     <p class="text-muted mb-4" style="font-size:.86rem">
-        Una misma materia puede tener varios cursos según el ambiente: Aula, Laboratorio o Aula Interactiva.
+        Una misma materia puede tener varios cursos según el ambiente donde se dicte. Los que aparecen dependen de la carrera: el taller es de Mecánica, la piscina de Entrenamiento Deportivo.
     </p>
 
     <?php if (empty($cursos)): ?>
@@ -563,7 +563,7 @@ $tok = htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8');
         <div class="cursos-grid">
             <?php foreach ($cursos as $c): ?>
                 <div class="curso-card">
-                    <span class="curso-ambiente amb-<?= strtolower(str_replace(' ', '-', $c['ambiente'])) ?>">
+                    <span class="curso-ambiente amb-<?= Catalogo::claseAmbiente($c['ambiente']) ?>">
                         <?= htmlspecialchars($c['ambiente']) ?>
                     </span>
                     <strong class="curso-materia"><?= htmlspecialchars($c['materia']) ?></strong>
@@ -597,7 +597,7 @@ $tok = htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8');
             <div class="cursos-grid">
                 <?php foreach ($cursosArchivados as $c): ?>
                     <div class="curso-card curso-archivado">
-                        <span class="curso-ambiente amb-<?= strtolower(str_replace(' ', '-', $c['ambiente'])) ?>">
+                        <span class="curso-ambiente amb-<?= Catalogo::claseAmbiente($c['ambiente']) ?>">
                             <?= htmlspecialchars($c['ambiente']) ?>
                         </span>
                         <strong class="curso-materia"><?= htmlspecialchars($c['materia']) ?></strong>
