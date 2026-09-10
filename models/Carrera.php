@@ -104,6 +104,40 @@ class Carrera
         )->fetchAll();
     }
 
+    /**
+     * Resumen de cada carrera DENTRO de un periodo: cuantas materias tiene y
+     * cuantas siguen sin docente.
+     *
+     * Es lo que necesita la pantalla de eleccion para que el administrador vea
+     * de un vistazo donde falta trabajo, en vez de tener que entrar carrera
+     * por carrera a comprobarlo.
+     */
+    public static function resumenPorPeriodo(?int $periodoId): array
+    {
+        $db = Database::conectar();
+
+        // El periodo puede no estar elegido todavia: en ese caso se cuenta
+        // todo, que es mas util que devolver ceros
+        $filtro     = $periodoId ? "AND m.periodo_id = ?" : "";
+        $parametros = $periodoId ? [$periodoId, $periodoId] : [];
+
+        $stmt = $db->prepare(
+            "SELECT c.id, c.codigo, c.nombre, c.ambientes, c.activa,
+                    (SELECT COUNT(*) FROM materias m
+                      WHERE m.carrera_id = c.id AND m.activa = 1 {$filtro}) AS total_materias,
+                    (SELECT COUNT(*) FROM materias m
+                      WHERE m.carrera_id = c.id AND m.activa = 1 {$filtro}
+                        AND NOT EXISTS (SELECT 1 FROM cursos cu
+                                         WHERE cu.materia_id = m.id AND cu.activo = 1)
+                    ) AS sin_docente
+             FROM carreras c
+             WHERE c.activa = 1
+             ORDER BY c.nombre ASC"
+        );
+        $stmt->execute($parametros);
+        return $stmt->fetchAll();
+    }
+
     public static function buscarPorId(?int $id): ?array
     {
         if (!$id) {

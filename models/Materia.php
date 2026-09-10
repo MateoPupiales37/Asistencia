@@ -70,8 +70,14 @@ class Materia
         return $stmt->fetchAll();
     }
 
-    /** Listado con el conteo de cursos y docentes asignados, para el panel del admin */
-    public static function listarConUso(?int $periodoId = null): array
+    /**
+     * Listado con el conteo de cursos y docentes asignados, para el panel del admin.
+     *
+     * @param int|null $carreraId Acota a una sola carrera. Con cinco carreras
+     *        cargadas, la lista completa obliga a buscar a ojo entre materias
+     *        que no tienen nada que ver entre si.
+     */
+    public static function listarConUso(?int $periodoId = null, ?int $carreraId = null): array
     {
         $db = Database::conectar();
 
@@ -87,11 +93,21 @@ class Materia
                 LEFT JOIN carreras ca ON m.carrera_id = ca.id
                 LEFT JOIN periodos p  ON m.periodo_id = p.id";
 
-        $parametros = [];
+        $condiciones = [];
+        $parametros  = [];
 
         if ($periodoId) {
-            $sql .= " WHERE m.periodo_id = ?";
-            $parametros[] = $periodoId;
+            $condiciones[] = "m.periodo_id = ?";
+            $parametros[]  = $periodoId;
+        }
+
+        if ($carreraId) {
+            $condiciones[] = "m.carrera_id = ?";
+            $parametros[]  = $carreraId;
+        }
+
+        if ($condiciones) {
+            $sql .= " WHERE " . implode(' AND ', $condiciones);
         }
 
         $sql .= " ORDER BY m.semestre ASC, m.nombre ASC";

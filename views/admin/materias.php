@@ -57,20 +57,36 @@ $periodosAbiertos = array_values(array_filter($periodos, static fn($p) => (int)$
 <nav class="breadcrumb">
     <a href="<?= $base ?>/admin">Supervisión</a>
     <span class="breadcrumb-separator">/</span>
-    <span class="breadcrumb-current">Materias</span>
+    <?php if ($carrera): ?>
+        <a href="<?= $base ?>/admin/materias">Materias</a>
+        <span class="breadcrumb-separator">/</span>
+        <span class="breadcrumb-current"><?= htmlspecialchars($carrera['nombre']) ?></span>
+    <?php else: ?>
+        <span class="breadcrumb-current">Materias</span>
+    <?php endif; ?>
 </nav>
 
 <div class="page-header">
     <div>
-        <h1 class="page-title">Materias y Asignaciones</h1>
+        <h1 class="page-title">
+            <?= $carrera ? htmlspecialchars($carrera['nombre']) : 'Materias y Asignaciones' ?>
+        </h1>
         <p class="page-subtitle">
-            Crea las materias del instituto y define qué docente dicta cada una
+            <?= $carrera
+                ? 'Materias de esta carrera y el docente que dicta cada una'
+                : 'Elige la carrera cuyas materias quieres administrar' ?>
         </p>
     </div>
     <div class="acciones-cabecera">
-        <a href="<?= $base ?>/admin" class="btn btn-back">&larr; Supervisión</a>
+        <?php if ($carrera): ?>
+            <a href="<?= $base ?>/admin/materias" class="btn btn-back">&larr; Carreras</a>
+        <?php else: ?>
+            <a href="<?= $base ?>/admin" class="btn btn-back">&larr; Supervisión</a>
+        <?php endif; ?>
         <button type="button" class="btn btn-outline" onclick="abrirModal('modalSemestres')">Semestres</button>
-        <button type="button" class="btn btn-primary" onclick="nuevaMateria()">+ Nueva Materia</button>
+        <?php if ($carrera): ?>
+            <button type="button" class="btn btn-primary" onclick="nuevaMateria()">+ Nueva Materia</button>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -96,16 +112,86 @@ $periodosAbiertos = array_values(array_filter($periodos, static fn($p) => (int)$
     <a href="<?= $base ?>/admin/periodo" class="btn btn-sm btn-outline">Cambiar período</a>
 </div>
 
+<?php if (!$carrera): ?>
+    <!-- ==================== ELECCIÓN DE CARRERA ====================
+         Con cinco carreras cargadas, una sola lista obliga a buscar a ojo
+         entre materias que no tienen nada que ver entre sí: las de Mecánica
+         mezcladas con las de Educación Inicial. Se entra por carrera.
+         ============================================================ -->
+    <div class="carreras-grid">
+        <?php foreach ($resumen as $c): ?>
+            <a href="<?= $base ?>/admin/materias?carrera=<?= (int)$c['id'] ?>" class="carrera-tarjeta">
+                <span class="carrera-sigla"><?= htmlspecialchars($c['codigo']) ?></span>
+                <h2 class="carrera-nombre"><?= htmlspecialchars($c['nombre']) ?></h2>
+
+                <p class="carrera-cifras">
+                    <strong><?= (int)$c['total_materias'] ?></strong>
+                    materia<?= (int)$c['total_materias'] === 1 ? '' : 's' ?>
+                    en <?= htmlspecialchars($periodo['nombre'] ?? 'este período') ?>
+                </p>
+
+                <?php if ((int)$c['sin_docente'] > 0): ?>
+                    <span class="badge badge-danger">
+                        <?= (int)$c['sin_docente'] ?> sin docente
+                    </span>
+                <?php elseif ((int)$c['total_materias'] > 0): ?>
+                    <span class="badge badge-success">Todas con docente</span>
+                <?php else: ?>
+                    <span class="badge badge-neutral">Sin materias todavía</span>
+                <?php endif; ?>
+
+                <span class="carrera-ambientes">
+                    <?php foreach (Carrera::ambientes($c) as $a): ?>
+                        <span class="curso-ambiente amb-<?= Catalogo::claseAmbiente($a) ?>">
+                            <?= htmlspecialchars($a) ?>
+                        </span>
+                    <?php endforeach; ?>
+                </span>
+
+                <span class="carrera-entrar">Administrar sus materias &rarr;</span>
+            </a>
+        <?php endforeach; ?>
+    </div>
+
+    <?php if (empty($resumen)): ?>
+        <div class="card">
+            <div class="estado-vacio">
+                <p class="estado-vacio-titulo">Todavía no hay carreras activas</p>
+                <p class="text-muted mb-4">
+                    Las materias cuelgan de una carrera, así que hay que crear la
+                    primera antes de poder cargar la malla.
+                </p>
+                <a href="<?= $base ?>/admin/periodo" class="btn btn-primary">Crear una carrera</a>
+            </div>
+        </div>
+    <?php endif; ?>
+
+<?php else: ?>
+
+<!-- Salto rápido de una carrera a otra, sin volver a la elección -->
+<nav class="carreras-pestanas" aria-label="Cambiar de carrera">
+    <?php foreach ($resumen as $c): ?>
+        <a href="<?= $base ?>/admin/materias?carrera=<?= (int)$c['id'] ?>"
+           class="carrera-pestana <?= (int)$c['id'] === (int)$carrera['id'] ? 'activa' : '' ?>">
+            <?= htmlspecialchars($c['nombre']) ?>
+            <span class="carrera-pestana-cifra"><?= (int)$c['total_materias'] ?></span>
+        </a>
+    <?php endforeach; ?>
+</nav>
+
 <div class="alert alert-info">
     <span>
-        <strong>Cómo funciona:</strong> tú creas la materia indicando su carrera y su
-        semestre, y le asignas un docente. Esa asignación genera el curso. Después,
-        cada docente entra a su panel y matricula ahí a sus propios estudiantes.
+        <strong>Cómo funciona:</strong> tú creas la materia indicando su semestre, y le
+        asignas un docente. Esa asignación genera el curso. Después, cada docente entra
+        a su panel y matricula ahí a sus propios estudiantes.
         <br>
         <strong>Una materia tiene un solo docente.</strong> Como el semestre y el
         período ya vienen dentro de la materia, "Programación de Aplicaciones" de
         Tercero y "Programación de Aplicaciones 2" de Cuarto son materias distintas
         y cada una puede tener el suyo.
+        <br>
+        <strong>Dónde se dictan:</strong> <?= htmlspecialchars(implode(', ', Carrera::ambientes($carrera))) ?>.
+        Se cambia desde <a href="<?= $base ?>/admin/periodo">Período académico &rarr; Carreras</a>.
         <?php if ($sinDocente > 0): ?>
             <br>Hay <strong><?= $sinDocente ?></strong> materia(s) activa(s) sin ningún docente asignado:
             mientras no tengan uno, nadie puede abrir clases de esa materia.
@@ -118,13 +204,17 @@ $periodosAbiertos = array_values(array_filter($periodos, static fn($p) => (int)$
         <div class="card">
             <div class="estado-vacio">
                 <p class="estado-vacio-titulo">
-                    Todavía no hay materias en <?= htmlspecialchars($periodo['nombre'] ?? 'este período') ?>
+                    <?= htmlspecialchars($carrera['nombre']) ?> no tiene materias
+                    en <?= htmlspecialchars($periodo['nombre'] ?? 'este período') ?>
                 </p>
                 <p class="text-muted mb-4">
                     Crea la primera con el botón "Nueva Materia". Si ya cargaste la
                     malla en otro período, puedes copiarla desde la pantalla de períodos.
                 </p>
-                <a href="<?= $base ?>/admin/periodo" class="btn btn-outline">Ir a períodos</a>
+                <div class="d-flex gap-2 justify-center flex-wrap">
+                    <button type="button" class="btn btn-primary" onclick="nuevaMateria()">+ Nueva Materia</button>
+                    <a href="<?= $base ?>/admin/periodo" class="btn btn-outline">Ir a períodos</a>
+                </div>
             </div>
         </div>
     <?php else: ?>
@@ -292,6 +382,8 @@ $periodosAbiertos = array_values(array_filter($periodos, static fn($p) => (int)$
     <?php endif; ?>
 </div>
 
+<?php endif; /* fin del bloque de una carrera concreta */ ?>
+
 <!-- ================== MODAL: crear / editar materia ================== -->
 <div id="modalMateria" class="modal-overlay">
     <div class="modal-content">
@@ -329,11 +421,17 @@ $periodosAbiertos = array_values(array_filter($periodos, static fn($p) => (int)$
                 <div class="form-group">
                     <label for="materiaCarrera" class="form-label">Carrera <span class="text-danger">*</span></label>
                     <select id="materiaCarrera" name="carrera_id" class="form-select" required>
-                        <?php if (count($carrerasActivas) !== 1): ?>
+                        <?php /* Sin carrera elegida no se llega a este modal, asi que
+                                 siempre hay una marcada y no hace falta el vacio */ ?>
+                        <?php if (!$carrera && count($carrerasActivas) !== 1): ?>
                             <option value="">-- Selecciona --</option>
                         <?php endif; ?>
                         <?php foreach ($carrerasActivas as $c): ?>
-                            <option value="<?= (int)$c['id'] ?>"><?= htmlspecialchars($c['nombre']) ?></option>
+                            <?php /* Viene marcada la carrera en la que se esta trabajando */ ?>
+                            <option value="<?= (int)$c['id'] ?>"
+                                    <?= ($carrera && (int)$c['id'] === (int)$carrera['id']) ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($c['nombre']) ?>
+                            </option>
                         <?php endforeach; ?>
                     </select>
                     <?php if (empty($carrerasActivas)): ?>

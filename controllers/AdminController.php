@@ -668,25 +668,48 @@ class AdminController extends BaseController
         $periodo   = $this->periodoActual();
         $periodoId = $periodo ? (int)$periodo['id'] : null;
 
-        $materias = Materia::listarConUso($periodoId);
-        foreach ($materias as &$materia) {
-            $materia['cursos']     = Curso::listarPorMateria((int)$materia['id']);
-            $materia['archivados'] = Curso::listarArchivadosPorMateria((int)$materia['id']);
+        /*
+         * La pantalla se entra POR CARRERA.
+         *
+         * Con cinco carreras cargadas, una sola lista obliga a buscar a ojo
+         * entre materias que no tienen nada que ver entre si: las de Mecanica
+         * mezcladas con las de Educacion Inicial. Sin ?carrera= se muestra la
+         * eleccion; con ella, solo esa carrera.
+         */
+        $carreraId = filter_var($_GET['carrera'] ?? null, FILTER_VALIDATE_INT) ?: null;
+        $carrera   = Carrera::buscarPorId($carreraId);
+
+        // Una carrera que ya no existe se trata como si no se hubiera pedido
+        // ninguna, en vez de dejar la pantalla vacia sin explicacion
+        if ($carrera === null) {
+            $carreraId = null;
         }
-        unset($materia);
+
+        $materias = [];
+
+        if ($carreraId !== null) {
+            $materias = Materia::listarConUso($periodoId, $carreraId);
+            foreach ($materias as &$materia) {
+                $materia['cursos']     = Curso::listarPorMateria((int)$materia['id']);
+                $materia['archivados'] = Curso::listarArchivadosPorMateria((int)$materia['id']);
+            }
+            unset($materia);
+        }
 
         $this->vista('admin.materias', [
-            'base'      => self::obtenerRutaBase(),
-            'materias'  => $materias,
-            'docentes'  => Usuario::listarDocentes(),
-            'semestres' => Semestre::listar(false),
-            'carreras'  => Carrera::listar(false),
-            'periodo'   => $periodo,
-            'periodos'  => Periodo::listar(),
-            'ambientes' => Catalogo::AMBIENTES,
-            'mensaje'   => $mensaje,
-            'error'     => $error,
-            'csrf'      => self::tokenCsrf()
+            'base'        => self::obtenerRutaBase(),
+            'materias'    => $materias,
+            'carrera'     => $carrera,
+            'resumen'     => Carrera::resumenPorPeriodo($periodoId),
+            'docentes'    => Usuario::listarDocentes(),
+            'semestres'   => Semestre::listar(false),
+            'carreras'    => Carrera::listar(false),
+            'periodo'     => $periodo,
+            'periodos'    => Periodo::listar(),
+            'ambientes'   => Catalogo::AMBIENTES,
+            'mensaje'     => $mensaje,
+            'error'       => $error,
+            'csrf'        => self::tokenCsrf()
         ]);
     }
 
@@ -751,7 +774,7 @@ class AdminController extends BaseController
             $aviso .= ' Ahora asígnale un docente.';
         }
 
-        $this->redirigirConMensaje($aviso, '/admin/materias');
+        $this->redirigirConMensaje($aviso, $this->rutaCarrera($carreraId));
     }
 
     public function actualizarMateria(): void
@@ -820,7 +843,7 @@ class AdminController extends BaseController
             $this->redirigirConError('No se pudo actualizar la materia.', '/admin/materias');
         }
 
-        $this->redirigirConMensaje('Materia actualizada.', '/admin/materias');
+        $this->redirigirConMensaje('Materia actualizada.', $this->rutaCarrera($carreraId));
     }
 
     public function estadoMateria(): void
@@ -937,7 +960,7 @@ class AdminController extends BaseController
         $this->redirigirConMensaje(
             "{$nombreDocente} quedó asignado a \"{$materia['nombre']}\" ({$semestre}). "
             . 'Ya puede matricular estudiantes y abrir clases.',
-            '/admin/materias'
+            $this->rutaCarrera($materia['carrera_id'] ? (int)$materia['carrera_id'] : null)
         );
     }
 
@@ -1354,6 +1377,18 @@ class AdminController extends BaseController
         }
 
         return [$nombre, $codigo];
+    }
+
+    /**
+     * La direccion de la pantalla de materias de una carrera.
+     *
+     * Se usa al volver de crear o editar: sin la carrera en la direccion, el
+     * administrador cae en la pantalla de eleccion y pierde de vista lo que
+     * acaba de hacer.
+     */
+    private function rutaCarrera(?int $carreraId): string
+    {
+        return $carreraId ? '/admin/materias?carrera=' . $carreraId : '/admin/materias';
     }
 
     /** Acepta una fecha en formato AAAA-MM-DD y rechaza cualquier otra cosa */

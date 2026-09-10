@@ -4483,6 +4483,150 @@ body.portada-body .footer {
     color: var(--color-primary-dark, #1b3a80);
 }
 
+/* --------------------------------------------------------------------------
+   ELECCION DE CARRERA
+   La pantalla de materias se entra por carrera. Cada tarjeta tiene que decir
+   de un vistazo donde falta trabajo, para no tener que entrar una por una a
+   comprobar si quedan materias sin docente.
+   -------------------------------------------------------------------------- */
+
+.carreras-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.carrera-tarjeta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 20px 18px 16px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    text-decoration: none;
+    color: inherit;
+    transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+
+.carrera-tarjeta:hover {
+    border-color: var(--color-primary);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, .1);
+    transform: translateY(-2px);
+}
+
+.carrera-sigla {
+    font-size: .68rem;
+    font-weight: var(--font-weight-bold);
+    letter-spacing: .12em;
+    color: var(--color-text-muted);
+    background: var(--color-surface-hover);
+    border-radius: var(--radius-full);
+    padding: 3px 11px;
+}
+
+.carrera-nombre {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: var(--font-weight-bold);
+    color: var(--color-primary);
+    line-height: 1.3;
+    /* Los nombres largos bajan de linea en vez de cortarse */
+    overflow-wrap: anywhere;
+}
+
+.carrera-cifras {
+    margin: 0;
+    font-size: .84rem;
+    color: var(--color-text-muted);
+}
+
+.carrera-cifras strong {
+    color: var(--color-text-main);
+}
+
+.carrera-ambientes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.carrera-entrar {
+    margin-top: auto;
+    padding-top: 8px;
+    font-size: .84rem;
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-primary);
+}
+
+.carrera-tarjeta:hover .carrera-entrar {
+    text-decoration: underline;
+}
+
+/* --------------------------- Pestanas de carrera ---------------------------
+   Dentro de una carrera, para saltar a otra sin volver a la eleccion.
+   -------------------------------------------------------------------------- */
+
+.carreras-pestanas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 16px;
+}
+
+.carrera-pestana {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 14px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text-muted);
+    font-size: .84rem;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.carrera-pestana:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+.carrera-pestana.activa {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #fff;
+    font-weight: var(--font-weight-semibold);
+}
+
+.carrera-pestana-cifra {
+    font-size: .74rem;
+    padding: 1px 7px;
+    border-radius: var(--radius-full);
+    background: var(--color-surface-hover);
+    color: var(--color-text-muted);
+}
+
+.carrera-pestana.activa .carrera-pestana-cifra {
+    background: rgba(255, 255, 255, .22);
+    color: #fff;
+}
+
+/* En el celular las pestanas se deslizan en una sola linea, para no empujar
+   el contenido hacia abajo cuando haya muchas carreras */
+@media (max-width: 640px) {
+    .carreras-pestanas {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 4px;
+    }
+}
+
 /* Grupo de casillas: los ambientes que usa una carrera */
 .grupo-casillas {
     border: 1px solid var(--color-border);
