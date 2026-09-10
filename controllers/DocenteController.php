@@ -374,7 +374,15 @@ class DocenteController extends BaseController
                 }
             }
 
-            $estudiante = $existente ?: Estudiante::crear($nombre, $apellido, $semestre, ($cedula !== '' ? $cedula : null));
+            // El alumno nace en la carrera del curso donde se lo esta
+            // registrando: sin eso quedaria suelto y volveria a aparecer como
+            // candidato en las demas carreras.
+            $estudiante = $existente ?: Estudiante::crear(
+                $nombre, $apellido, $semestre,
+                ($cedula !== '' ? $cedula : null),
+                null,
+                Matricula::carreraDelCurso((int)$sesion['curso_id'])
+            );
 
             if (!$estudiante) {
                 $this->redirigirConError('No se pudo registrar al estudiante nuevo.', '/docente');
@@ -591,6 +599,9 @@ class DocenteController extends BaseController
             'cursoId'      => $cursoId,
             'matriculados' => $matriculados,
             'candidatos'   => $candidatos,
+            // Para poder decirle al docente de que carrera son los candidatos
+            // que esta viendo, y por que no salen los demas
+            'carreraCurso' => $curso['carrera'] ?? null,
             'filtro'       => $filtro,
             'totalCurso'   => $cursoId ? Matricula::contarPorCurso($cursoId) : 0,
             'totalNuevos'  => $cursoId ? Matricula::contarNuevos($cursoId) : 0,
@@ -695,7 +706,10 @@ class DocenteController extends BaseController
             );
         }
 
-        $nuevo = Estudiante::crear($nombre, $apellido, $semestre, $cedula, $telefono);
+        $nuevo = Estudiante::crear(
+            $nombre, $apellido, $semestre, $cedula, $telefono,
+            Matricula::carreraDelCurso($cursoId)
+        );
 
         if (!$nuevo) {
             $this->redirigirConError('No se pudo crear el estudiante.', $ruta);
@@ -845,6 +859,9 @@ class DocenteController extends BaseController
     /** Recorre las filas del Excel y devuelve el detalle de lo que paso */
     private function procesarFilas(array $filas, int $cursoId): array
     {
+        // Todos los alumnos del archivo entran a la carrera de este curso
+        $carreraDelCurso = Matricula::carreraDelCurso($cursoId);
+
         $creados = 0;
         $matriculados = 0;
         $problemas = [];
@@ -912,7 +929,9 @@ class DocenteController extends BaseController
                     Estudiante::guardarTelefono((int)$existente['id'], $telefono);
                 }
             } else {
-                $estudiante = Estudiante::crear($nombre, $apellido, $semestreReal, $cedula, $telefono);
+                $estudiante = Estudiante::crear(
+                    $nombre, $apellido, $semestreReal, $cedula, $telefono, $carreraDelCurso
+                );
 
                 if (!$estudiante) {
                     $problemas[] = "Fila {$numero}: no se pudo guardar a {$nombre} {$apellido}.";

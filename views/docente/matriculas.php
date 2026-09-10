@@ -129,7 +129,8 @@ foreach ($matriculados as $m) {
             <div class="card mb-6">
                 <h2 class="card-titulo">Agregar del padrón</h2>
                 <p class="text-muted mb-4" style="font-size:.87rem">
-                    Estudiantes que ya existen en el sistema pero aún no están en este curso.
+                    Estudiantes de <strong><?= htmlspecialchars($carreraCurso ?? 'esta carrera') ?></strong>
+                    que ya existen en el sistema pero aún no están en este curso.
                     Marca los que correspondan.
                 </p>
 
@@ -139,7 +140,8 @@ foreach ($matriculados as $m) {
 
                     <div class="lista-candidatos">
                         <?php foreach ($candidatos as $e): ?>
-                            <label class="candidato">
+                            <?php $sinCarrera = empty($e['carrera_id']); ?>
+                            <label class="candidato <?= $sinCarrera ? 'sin-carrera' : '' ?>">
                                 <input type="checkbox" name="estudiante_id[]" value="<?= (int)$e['id'] ?>">
                                 <span>
                                     <strong><?= htmlspecialchars(trim($e['apellido'] . ' ' . $e['nombre'])) ?></strong>
@@ -148,6 +150,15 @@ foreach ($matriculados as $m) {
                                         <?= !empty($e['cedula']) ? ' · ' . htmlspecialchars($e['cedula']) : '' ?>
                                         · <?= htmlspecialchars($e['semestre']) ?>
                                     </small>
+                                    <?php if ($sinCarrera): ?>
+                                        <?php /* Recien importado: todavia no pertenece a ninguna
+                                                 carrera, asi que se avisa antes de marcarlo. Al
+                                                 matricularlo hereda la de este curso. */ ?>
+                                        <small class="candidato-aviso">
+                                            Sin carrera asignada &mdash; al matricularlo entrará en
+                                            <?= htmlspecialchars($carreraCurso ?? 'esta carrera') ?>
+                                        </small>
+                                    <?php endif; ?>
                                 </span>
                             </label>
                         <?php endforeach; ?>

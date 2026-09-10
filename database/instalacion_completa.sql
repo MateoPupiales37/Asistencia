@@ -94,6 +94,7 @@ CREATE TABLE `estudiantes` (
   `telefono` varchar(15) DEFAULT NULL,
   `nombre` varchar(80) NOT NULL,
   `apellido` varchar(80) NOT NULL,
+  `carrera_id` int(11) DEFAULT NULL,
   `semestre` varchar(30) NOT NULL,
   `token_qr` char(32) NOT NULL,
   `activo` tinyint(1) NOT NULL DEFAULT 1,
@@ -104,7 +105,9 @@ CREATE TABLE `estudiantes` (
   UNIQUE KEY `codigo` (`codigo`),
   UNIQUE KEY `token_qr` (`token_qr`),
   UNIQUE KEY `estudiante_cedula` (`cedula`),
-  KEY `idx_estudiante_semestre` (`semestre`)
+  KEY `idx_estudiante_semestre` (`semestre`),
+  KEY `idx_estudiante_carrera` (`carrera_id`,`semestre`),
+  CONSTRAINT `fk_estudiante_carrera` FOREIGN KEY (`carrera_id`) REFERENCES `carreras` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `expulsiones` (

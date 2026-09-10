@@ -44,6 +44,25 @@ class Estudiante
         return $stmt->fetch() ?: null;
     }
 
+    /**
+     * Le pone carrera a un estudiante que todavia no la tenia.
+     *
+     * Nunca la CAMBIA: si ya pertenece a una carrera y alguien lo matricula en
+     * un curso de otra, se deja como esta y el docente lo vera marcado. Mover
+     * a un alumno de carrera es una decision academica, no algo que deba pasar
+     * de rebote al matricularlo.
+     */
+    public static function asignarCarreraSiFalta(int $id, ?int $carreraId): void
+    {
+        if (!$carreraId) {
+            return;
+        }
+
+        $db = Database::conectar();
+        $db->prepare("UPDATE estudiantes SET carrera_id = ? WHERE id = ? AND carrera_id IS NULL")
+           ->execute([$carreraId, $id]);
+    }
+
     public static function buscarPorId(int $id): ?array
     {
         $db = Database::conectar();
@@ -90,7 +109,19 @@ class Estudiante
      * la ficha que ya existe, que es justo lo que se quiere cuando el alumno
      * vuelve a registrarse escribiendo su cedula en otra clase.
      */
-    public static function crear(string $nombre, string $apellido, string $semestre, ?string $cedula = null, ?string $telefono = null): ?array
+    /**
+     * @param int|null $carreraId La carrera a la que pertenece. Viene del curso
+     *        donde lo esta matriculando el docente: un alumno de Mecanica no
+     *        tiene por que aparecer entre los candidatos de Desarrollo.
+     */
+    public static function crear(
+        string $nombre,
+        string $apellido,
+        string $semestre,
+        ?string $cedula = null,
+        ?string $telefono = null,
+        ?int $carreraId = null
+    ): ?array
     {
         $db = Database::conectar();
 
@@ -109,14 +140,15 @@ class Estudiante
 
             try {
                 $stmt = $db->prepare(
-                    "INSERT INTO estudiantes (codigo, cedula, telefono, nombre, apellido, semestre, token_qr)
-                     VALUES (?, ?, ?, ?, ?, ?, ?)"
+                    "INSERT INTO estudiantes
+                        (codigo, cedula, telefono, nombre, apellido, semestre, carrera_id, token_qr)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
                 );
                 $stmt->execute([
                     $codigo,
                     ($cedula !== '' ? $cedula : null),
                     self::normalizarTelefono($telefono),
-                    $nombre, $apellido, $semestre, $token
+                    $nombre, $apellido, $semestre, $carreraId, $token
                 ]);
                 return self::buscarPorId((int)$db->lastInsertId());
             } catch (PDOException $e) {

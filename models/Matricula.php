@@ -16,9 +16,11 @@ class Matricula
 {
     private const SELECT_ESTUDIANTE = "
         SELECT e.id, e.codigo, e.cedula, e.nombre, e.apellido, e.semestre,
-               e.telefono, e.token_qr, e.activo, m.creado_en AS matriculado_en
+               e.telefono, e.token_qr, e.activo, e.carrera_id,
+               ca.nombre AS carrera, m.creado_en AS matriculado_en
         FROM matriculas m
-        JOIN estudiantes e ON m.estudiante_id = e.id";
+        JOIN estudiantes e ON m.estudiante_id = e.id
+        LEFT JOIN carreras ca ON e.carrera_id = ca.id";
 
     // ------------------------------------------------------------------
     // Consultas
@@ -137,21 +139,43 @@ class Matricula
     }
 
     /** Estudiantes que AUN NO estan en el curso, para el selector de matricula */
+    /**
+     * Estudiantes del padron que todavia no estan en este curso.
+     *
+     * Solo los de LA MISMA CARRERA que el curso. Antes salian todos, y al
+     * matricular en un curso de Mecanica aparecian los alumnos de Desarrollo
+     * de Software: el docente tenia que conocerlos de memoria para no marcar
+     * al que no era.
+     *
+     * Se incluyen tambien los que aun no tienen carrera asignada, porque son
+     * los recien importados: dejarlos fuera los volveria invisibles y no
+     * habria forma de matricularlos en ningun sitio. Al matricularlos se les
+     * asigna la del curso, asi que solo aparecen asi una vez.
+     */
     public static function candidatos(int $cursoId, string $semestre = ''): array
     {
         $db  = Database::conectar();
-        $sql = "SELECT e.id, e.codigo, e.cedula, e.nombre, e.apellido, e.semestre
+        $sql = "SELECT e.id, e.codigo, e.cedula, e.nombre, e.apellido, e.semestre,
+                       e.carrera_id, ca.nombre AS carrera
                 FROM estudiantes e
+                LEFT JOIN carreras ca ON e.carrera_id = ca.id
                 WHERE e.activo = 1
-                  AND e.id NOT IN (SELECT estudiante_id FROM matriculas WHERE curso_id = ?)";
-        $params = [$cursoId];
+                  AND e.id NOT IN (SELECT estudiante_id FROM matriculas WHERE curso_id = ?)
+                  AND (e.carrera_id IS NULL OR e.carrera_id = (
+                        SELECT m.carrera_id FROM cursos c
+                          JOIN materias m ON c.materia_id = m.id
+                         WHERE c.id = ?
+                  ))";
+        $params = [$cursoId, $cursoId];
 
         if ($semestre !== '') {
             $sql .= " AND e.semestre = ?";
             $params[] = $semestre;
         }
 
-        $sql .= " ORDER BY e.apellido ASC, e.nombre ASC";
+        // Primero los que ya son de la carrera; los que aun no la tienen van
+        // al final, donde el docente los revisa con mas cuidado
+        $sql .= " ORDER BY (e.carrera_id IS NULL) ASC, e.apellido ASC, e.nombre ASC";
 
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
@@ -181,13 +205,41 @@ class Matricula
     // ------------------------------------------------------------------
 
     /** Devuelve 'ok', 'duplicada' o 'error' */
+    /**
+     * La carrera del curso, para heredarsela al alumno que aun no tiene una.
+     */
+    public static function carreraDelCurso(int $cursoId): ?int
+    {
+        $db = Database::conectar();
+        $stmt = $db->prepare(
+            "SELECT m.carrera_id FROM cursos c
+             JOIN materias m ON c.materia_id = m.id
+             WHERE c.id = ? LIMIT 1"
+        );
+        $stmt->execute([$cursoId]);
+        $fila = $stmt->fetch();
+
+        return ($fila && $fila['carrera_id']) ? (int)$fila['carrera_id'] : null;
+    }
+
     public static function matricular(int $estudianteId, int $cursoId): string
     {
+        require_once __DIR__ . '/Estudiante.php';
+
         $db = Database::conectar();
 
         try {
             $stmt = $db->prepare("INSERT INTO matriculas (estudiante_id, curso_id) VALUES (?, ?)");
-            return $stmt->execute([$estudianteId, $cursoId]) ? 'ok' : 'error';
+            $ok = $stmt->execute([$estudianteId, $cursoId]);
+
+            // El alumno que aun no tenia carrera hereda la del curso. Asi el
+            // recien importado deja de aparecer como candidato en las demas
+            // carreras en cuanto entra a la primera.
+            if ($ok) {
+                Estudiante::asignarCarreraSiFalta($estudianteId, self::carreraDelCurso($cursoId));
+            }
+
+            return $ok ? 'ok' : 'error';
         } catch (PDOException $e) {
             return ($e->getCode() === '23000') ? 'duplicada' : 'error';
         }

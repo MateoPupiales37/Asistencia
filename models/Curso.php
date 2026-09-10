@@ -12,9 +12,11 @@ class Curso
     private const SELECT_BASE = "
         SELECT c.id, c.materia_id, c.docente_id, c.ambiente, c.semestre, c.activo,
                m.nombre AS materia, m.codigo AS materia_codigo,
+               m.carrera_id, ca.nombre AS carrera,
                u.nombre AS docente_nombre, u.apellido AS docente_apellido
         FROM cursos c
         JOIN materias m ON c.materia_id = m.id
+        LEFT JOIN carreras ca ON m.carrera_id = ca.id
         JOIN usuarios u ON c.docente_id = u.id";
 
     // Cursos de un docente, con el conteo de clases dictadas

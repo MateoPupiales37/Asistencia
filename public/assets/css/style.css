@@ -3001,6 +3001,22 @@ body.home-layout .home-secondary-links a:hover {
     border-color: var(--color-primary-light);
 }
 
+/* Candidato recien importado, todavia sin carrera: se destaca para que el
+   docente lo mire dos veces antes de marcarlo, porque al matricularlo lo
+   estara metiendo en la carrera de este curso. */
+.candidato.sin-carrera {
+    border-color: var(--color-warning-border, #fcd34d);
+    background: var(--color-warning-bg, #fffbeb);
+}
+
+.candidato-aviso {
+    display: block;
+    margin-top: 3px;
+    font-size: .72rem;
+    color: var(--color-warning-text, #92400e);
+    line-height: 1.35;
+}
+
 .candidato input {
     margin-top: 3px;
     width: 17px;
