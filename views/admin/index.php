@@ -13,9 +13,25 @@ $tok = htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8');
         </p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
+        <a href="<?= $base ?>/admin/periodo" class="btn btn-outline">Período</a>
         <a href="<?= $base ?>/admin/docentes" class="btn btn-outline">Cuentas</a>
         <a href="<?= $base ?>/reportes" class="btn btn-primary">Reportes</a>
     </div>
+</div>
+
+<!-- Recordatorio del ciclo en el que se esta trabajando -->
+<div class="periodo-barra">
+    <div>
+        <span class="periodo-barra-etiqueta">Trabajando en el período</span>
+        <strong><?= htmlspecialchars($periodo['nombre'] ?? 'Sin período') ?></strong>
+        <?php if (!empty($periodo)): ?>
+            <span class="text-muted">
+                (<?= date('d/m/Y', strtotime($periodo['fecha_inicio'])) ?>
+                al <?= date('d/m/Y', strtotime($periodo['fecha_fin'])) ?>)
+            </span>
+        <?php endif; ?>
+    </div>
+    <a href="<?= $base ?>/admin/periodo" class="btn btn-sm btn-outline">Cambiar período</a>
 </div>
 
 <?php if (!empty($mensaje)): ?>

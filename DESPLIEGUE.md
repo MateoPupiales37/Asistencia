@@ -94,7 +94,7 @@ que copiarlo a mano.
 1. Abre el servicio **MySQL** → pestaña **Data** → **Query**.
 2. Copia el contenido de [`database/instalacion_completa.sql`](database/instalacion_completa.sql) y ejecútalo.
 
-Ese archivo crea las 11 tablas con las cinco migraciones ya aplicadas y deja
+Ese archivo crea las 14 tablas con las seis migraciones ya aplicadas y deja
 **una sola cuenta**:
 
 | Correo | Contraseña |
@@ -152,8 +152,11 @@ MySQL externo (puedes crear solo la base en Railway y apuntar Render ahí).
 
 Recorre esta lista una vez publicado:
 
-- [ ] La portada abre y muestra las dos puertas
-- [ ] `/acceso` **no** muestra ninguna credencial
+- [ ] La portada abre y muestra las tres puertas (Estudiantes, Docentes, Administración)
+- [ ] `/acceso/docente` y `/acceso/admin` **no** muestran ninguna credencial
+- [ ] Cada puerta rechaza al rol que no le corresponde
+- [ ] El administrador cae en la pantalla de período académico al entrar
+- [ ] Existe al menos un período abierto y una carrera
 - [ ] Entras con la cuenta de administrador
 - [ ] Cambiaste la contraseña inicial
 - [ ] Activaste la verificación en dos pasos
@@ -166,7 +169,9 @@ Recorre esta lista una vez publicado:
 - [ ] Aparece en la lista en vivo del docente
 - [ ] El QR **caduca a los 15 minutos**
 - [ ] El QR de salida registra la salida
-- [ ] Los reportes exportan en CSV y PDF
+- [ ] El docente justifica una falta y adjunta un PDF
+- [ ] El justificante **solo** abre desde el sistema, no escribiendo su dirección
+- [ ] Los reportes exportan en Excel y PDF, y el PDF trae el bloque de firmas
 
 ---
 

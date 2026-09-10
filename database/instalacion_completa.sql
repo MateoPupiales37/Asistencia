@@ -1,8 +1,11 @@
 -- =====================================================================
 -- INSTALACION COMPLETA - Sistema de Asistencia QR (ISTPET)
 --
--- Un solo archivo que crea TODAS las tablas ya con las cinco migraciones
+-- Un solo archivo que crea TODAS las tablas ya con las seis migraciones
 -- aplicadas. Es el que se usa para montar el sistema en un servidor nuevo.
+--
+-- Se regenera desde la estructura real de la base, no se edita a mano:
+-- asi no puede quedarse atras de las migraciones sin que nadie lo note.
 --
 -- Como usarlo:
 --   Local  : phpMyAdmin -> Importar -> este archivo
@@ -20,14 +23,15 @@
 
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
+
 CREATE TABLE `asistencias` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `sesion_id` int(11) NOT NULL,
   `estudiante_id` int(11) NOT NULL,
   `hora_entrada` datetime NOT NULL,
   `hora_salida` datetime DEFAULT NULL,
-  `estado` enum('presente','salio','salida_temprana') NOT NULL DEFAULT 'presente',
-  `motivo` enum('Emergencia medica','Llamado de coordinacion','Mal comportamiento','Permiso del docente','Otro') DEFAULT NULL,
+  `estado` enum('presente','salio','salida_temprana','salida_justificada') NOT NULL DEFAULT 'presente',
+  `motivo` enum('Cita medica','Emergencia medica','Llamado de coordinacion','Mal comportamiento','Permiso del docente','Otro') DEFAULT NULL,
   `motivo_detalle` varchar(200) DEFAULT NULL,
   `origen` enum('qr','manual') NOT NULL DEFAULT 'qr',
   `aprobacion` enum('aprobada','pendiente') NOT NULL DEFAULT 'aprobada',
@@ -39,9 +43,18 @@ CREATE TABLE `asistencias` (
   KEY `fk_asistencia_estudiante` (`estudiante_id`),
   CONSTRAINT `fk_asistencia_estudiante` FOREIGN KEY (`estudiante_id`) REFERENCES `estudiantes` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_asistencia_sesion` FOREIGN KEY (`sesion_id`) REFERENCES `sesiones` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-
+CREATE TABLE `carreras` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `codigo` varchar(20) NOT NULL,
+  `nombre` varchar(120) NOT NULL,
+  `activa` tinyint(1) NOT NULL DEFAULT 1,
+  `creado_en` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `carrera_codigo` (`codigo`),
+  UNIQUE KEY `carrera_nombre` (`nombre`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `consentimientos` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -56,9 +69,7 @@ CREATE TABLE `consentimientos` (
   PRIMARY KEY (`id`),
   KEY `idx_consentimiento_persona` (`tipo_persona`,`persona_id`),
   KEY `idx_consentimiento_fecha` (`aceptado_en`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `cursos` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -73,9 +84,7 @@ CREATE TABLE `cursos` (
   KEY `fk_curso_docente` (`docente_id`),
   CONSTRAINT `fk_curso_docente` FOREIGN KEY (`docente_id`) REFERENCES `usuarios` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_curso_materia` FOREIGN KEY (`materia_id`) REFERENCES `materias` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `estudiantes` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -95,9 +104,7 @@ CREATE TABLE `estudiantes` (
   UNIQUE KEY `token_qr` (`token_qr`),
   UNIQUE KEY `estudiante_cedula` (`cedula`),
   KEY `idx_estudiante_semestre` (`semestre`)
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `expulsiones` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -116,19 +123,43 @@ CREATE TABLE `expulsiones` (
   CONSTRAINT `fk_expulsion_sesion` FOREIGN KEY (`sesion_id`) REFERENCES `sesiones` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-
+CREATE TABLE `justificaciones` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `sesion_id` int(11) NOT NULL,
+  `estudiante_id` int(11) NOT NULL,
+  `docente_id` int(11) DEFAULT NULL COMMENT 'Quien la registro',
+  `tipo` enum('Cita medica','Permiso institucional','Calamidad domestica','Comision academica','Otro') NOT NULL DEFAULT 'Otro',
+  `detalle` varchar(300) DEFAULT NULL,
+  `archivo` varchar(120) DEFAULT NULL COMMENT 'Nombre en storage/justificantes',
+  `archivo_nombre` varchar(160) DEFAULT NULL COMMENT 'Nombre original, para la descarga',
+  `archivo_tipo` varchar(80) DEFAULT NULL COMMENT 'application/pdf, image/jpeg...',
+  `archivo_peso` int(11) DEFAULT NULL,
+  `creado_en` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `justificacion_unica` (`sesion_id`,`estudiante_id`),
+  KEY `fk_justificacion_estudiante` (`estudiante_id`),
+  KEY `fk_justificacion_docente` (`docente_id`),
+  CONSTRAINT `fk_justificacion_docente` FOREIGN KEY (`docente_id`) REFERENCES `usuarios` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_justificacion_estudiante` FOREIGN KEY (`estudiante_id`) REFERENCES `estudiantes` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_justificacion_sesion` FOREIGN KEY (`sesion_id`) REFERENCES `sesiones` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `materias` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `codigo` varchar(20) NOT NULL,
   `nombre` varchar(120) NOT NULL,
+  `carrera_id` int(11) DEFAULT NULL,
+  `semestre` varchar(30) NOT NULL DEFAULT '',
+  `periodo_id` int(11) DEFAULT NULL,
   `activa` tinyint(1) NOT NULL DEFAULT 1,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `codigo` (`codigo`),
-  UNIQUE KEY `nombre` (`nombre`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-
+  UNIQUE KEY `materia_unica` (`nombre`,`semestre`,`carrera_id`,`periodo_id`),
+  UNIQUE KEY `materia_codigo` (`codigo`,`periodo_id`),
+  KEY `idx_materia_periodo` (`periodo_id`,`semestre`),
+  KEY `fk_materia_carrera` (`carrera_id`),
+  CONSTRAINT `fk_materia_carrera` FOREIGN KEY (`carrera_id`) REFERENCES `carreras` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_materia_periodo` FOREIGN KEY (`periodo_id`) REFERENCES `periodos` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `matriculas` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -140,9 +171,19 @@ CREATE TABLE `matriculas` (
   KEY `idx_matricula_curso` (`curso_id`),
   CONSTRAINT `fk_matricula_curso` FOREIGN KEY (`curso_id`) REFERENCES `cursos` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_matricula_estudiante` FOREIGN KEY (`estudiante_id`) REFERENCES `estudiantes` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-
+CREATE TABLE `periodos` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `nombre` varchar(40) NOT NULL COMMENT 'Como lo llama el instituto: 2026-1, Octubre 2026 - Marzo 2027',
+  `fecha_inicio` date NOT NULL,
+  `fecha_fin` date NOT NULL,
+  `activo` tinyint(1) NOT NULL DEFAULT 1 COMMENT '0 = periodo cerrado, solo lectura',
+  `creado_en` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `periodo_nombre` (`nombre`),
+  KEY `idx_periodo_activo` (`activo`,`fecha_inicio`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `semestres` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -151,9 +192,7 @@ CREATE TABLE `semestres` (
   `activo` tinyint(1) NOT NULL DEFAULT 1,
   PRIMARY KEY (`id`),
   UNIQUE KEY `nombre` (`nombre`)
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `sesiones` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -179,9 +218,7 @@ CREATE TABLE `sesiones` (
   KEY `idx_sesion_codigos` (`codigo_entrada`,`codigo_salida`),
   CONSTRAINT `fk_sesion_curso` FOREIGN KEY (`curso_id`) REFERENCES `cursos` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_sesion_docente` FOREIGN KEY (`docente_id`) REFERENCES `usuarios` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `solicitudes_clave` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -200,9 +237,7 @@ CREATE TABLE `solicitudes_clave` (
   KEY `idx_solicitud_estado` (`estado`,`creado_en`),
   CONSTRAINT `fk_solicitud_admin` FOREIGN KEY (`atendida_por`) REFERENCES `usuarios` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_solicitud_usuario` FOREIGN KEY (`usuario_id`) REFERENCES `usuarios` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `usuarios` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -222,7 +257,7 @@ CREATE TABLE `usuarios` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `correo` (`correo`),
   KEY `idx_usuario_telefono` (`telefono`)
-) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;
 
@@ -246,4 +281,22 @@ INSERT INTO semestres (nombre, orden, activo) VALUES
 ('Cuarto Semestre', 4, 1),
 ('Quinto Semestre', 5, 1),
 ('Sexto Semestre', 6, 1)
+ON DUPLICATE KEY UPDATE nombre = VALUES(nombre);
+
+-- =====================================================================
+-- CARRERA Y PERIODO INICIALES
+--
+-- Sin un periodo academico el administrador no puede crear ninguna materia,
+-- asi que el sistema arranca con uno abierto que cubre el ano en curso. Los
+-- dos se corrigen despues desde el panel: Periodo academico -> Editar.
+-- =====================================================================
+INSERT INTO carreras (codigo, nombre, activa)
+VALUES ('DSW', 'Desarrollo de Software', 1)
+ON DUPLICATE KEY UPDATE nombre = VALUES(nombre);
+
+INSERT INTO periodos (nombre, fecha_inicio, fecha_fin, activo)
+VALUES (CONCAT(YEAR(CURDATE()), '-1'),
+        MAKEDATE(YEAR(CURDATE()), 1),
+        MAKEDATE(YEAR(CURDATE()), 1) + INTERVAL 11 MONTH + INTERVAL 30 DAY,
+        1)
 ON DUPLICATE KEY UPDATE nombre = VALUES(nombre);

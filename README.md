@@ -32,19 +32,24 @@ asistencia/
 ├── models/                     # MODELOS: consultas SQL y reglas de datos
 │   ├── Catalogo.php            # Listas fijas del sistema y validacion de cedula
 │   ├── Usuario.php             # Docentes y administradores
-│   ├── Materia.php             # Catalogo de asignaturas
-│   ├── Curso.php               # Materia + docente + ambiente + semestre + paralelo
+│   ├── Periodo.php             # Ciclo lectivo: separa un semestre academico del siguiente
+│   ├── Carrera.php             # Carreras del instituto
+│   ├── Materia.php             # Asignatura ubicada en carrera, semestre y periodo
+│   ├── Curso.php               # Materia + docente + ambiente
 │   ├── Estudiante.php          # Padron de alumnos, cedula y carnet QR
-│   ├── Sesion.php              # Clases y sus dos codigos QR
-│   └── Asistencia.php          # Entradas, salidas, motivos y filtros de reporte
+│   ├── Matricula.php           # Quien pertenece a cada curso, y quien falto a cada clase
+│   ├── Sesion.php              # Clases, sus dos codigos QR y la geocerca
+│   ├── Asistencia.php          # Entradas, salidas, motivos y filtros de reporte
+│   ├── Justificacion.php       # Respaldo de una falta: certificado medico, permiso
+│   └── Expulsion.php           # Bloqueo temporal del alumno retirado de una clase
 ├── controllers/                # CONTROLADORES
 │   ├── BaseController.php      # Vistas, redirecciones, CSRF, roles e inactividad
 │   ├── HomeController.php      # Portada y paginas de error
-│   ├── AuthController.php      # Acceso unico de docente y administrador
-│   ├── DocenteController.php   # Panel de clase, QR, lista en vivo y carnets
+│   ├── AuthController.php      # Las dos puertas del personal y el doble factor
+│   ├── DocenteController.php   # Panel de clase, QR, lista en vivo, carnets y justificantes
 │   ├── AsistenciaController.php# Pantalla publica del estudiante
-│   ├── ReporteController.php   # Filtros y exportacion a CSV, Excel y PDF
-│   └── AdminController.php     # Supervision institucional y cuentas
+│   ├── ReporteController.php   # Filtros y exportacion a Excel y PDF
+│   └── AdminController.php     # Periodo, carreras, materias, cuentas y supervision
 ├── libs/
 │   ├── QrCodigo.php            # Generador de QR en PHP puro (funciona sin internet)
 │   ├── ReportePdf.php          # Reporte A4 horizontal con membrete ISTPET
@@ -126,27 +131,36 @@ puede escribir a mano si la camara falla.
 
 ---
 
-## Credenciales de prueba
+## Como se entra
 
-El acceso es unico para docentes y administradores, con correo institucional
-`nombre.apellido@istpet.edu.ec`.
+La portada reparte en **tres puertas**, y cada una lleva a donde corresponde:
 
-| Rol | Correo | Contraseña |
+| Puerta | Direccion | Quien entra |
 |---|---|---|
-| **Administrador** | `admin.general@istpet.edu.ec` | `admin123` |
-| **Docente** | `juan.tapia@istpet.edu.ec` | `docente123` |
-| **Docente** | `maria.calderon@istpet.edu.ec` | `docente123` |
+| Estudiantes | `/asistencia` | Sin cuenta: escanea el QR y se identifica |
+| Docentes | `/acceso/docente` | Correo institucional + contraseña + doble factor |
+| Administracion | `/acceso/admin` | Igual, pero a su propio panel |
 
-Los **estudiantes no tienen cuenta**. Se identifican de una de estas cuatro formas,
-de la mas fiable a la menos:
+Cada puerta del personal solo deja pasar a su rol. Si alguien se equivoca, el
+sistema se lo dice y le ofrece la correcta, pero solo **despues** de comprobar
+la contraseña: decirlo antes confirmaria que ese correo existe sin necesidad de
+saber la clave.
+
+El administrador cae primero en la pantalla de **periodo academico**. Casi todo
+lo que hara despues ocurre dentro de un ciclo concreto, y dar por supuesto cual
+es el ciclo es como termina la malla de un periodo cargada dentro de otro.
+
+Los **estudiantes no tienen cuenta**. Se identifican de tres formas, y las tres
+exigen estar matriculados previamente por su docente:
 
 1. **Carnet QR personal** — lo escanea y queda identificado sin escribir nada.
 2. **Codigo institucional** — `EST001`, `EST002`, ...
 3. **Numero de cedula** — la via de respaldo para cuando no recuerda su codigo.
-4. **Nombre, apellido y semestre** — ultimo recurso; conviene agregar la cedula.
 
-Cedulas de los alumnos de prueba: `1701234567` (EST001), `1712345675` (EST002),
-`0509876546` (EST003).
+> Las credenciales de las cuentas de prueba **no estan en este archivo**: viven
+> en `CREDENCIALES.md`, que esta en `.gitignore` y no sale del equipo. Tampoco
+> se muestran ya en las pantallas de acceso, donde antes publicaban una cuenta
+> de administrador que funcionaba.
 
 ---
 
@@ -165,8 +179,14 @@ Cedulas de los alumnos de prueba: `1701234567` (EST001), `1712345675` (EST002),
 | Clickjacking y sniffing | `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, CSP |
 | Acceso a archivos internos | Bloqueo por `.htaccess`, independiente de `mod_rewrite` |
 | Doble registro | Clave `UNIQUE (sesion_id, estudiante_id)` en la base |
-| Registro fuera del aula | Los codigos QR caducan a los 15 minutos |
-| Suplantacion | La cedula se valida con su digito verificador; el docente puede eliminar registros falsos |
+| Registro desde casa | Geocerca: el registro se rechaza a mas de 500 m de donde se abrio la clase |
+| QR reenviado a un companero | La geocerca, mas la caducidad del codigo a los pocos minutos |
+| Reutilizar el QR de otro dia | El codigo de una clase cerrada o caducada se rechaza |
+| Cedula inventada | Ademas del digito verificador, tiene que estar registrada en el padron |
+| Volver tras ser retirado | Bloqueo de 4 horas en esa misma clase |
+| Contraseña robada | Verificacion en dos pasos (TOTP, RFC 6238) con Google Authenticator |
+| Correo de otro dominio | Solo se acepta `@istpet.edu.ec`, comparando el dominio exacto |
+| Certificados medicos expuestos | Los justificantes viven fuera de `public/` y se sirven por un controlador que comprueba quien los pide |
 
 Durante el desarrollo, el modo depuracion se activa poniendo `DEPURAR = true` en
 [`config/app.php`](config/app.php). **Debe quedar en `false` en produccion.**

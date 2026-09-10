@@ -1537,6 +1537,15 @@ code {
     background: var(--color-warning-bg);
     color: var(--color-warning-text);
 }
+/*
+   La salida justificada se ve distinta de la que no lo esta: al cerrar el
+   periodo son dos cosas que no cuentan igual, y en una lista larga el color
+   es lo que permite separarlas de un vistazo.
+*/
+.badge.estado-salida_justificada {
+    background: var(--color-info-bg, #e0f2fe);
+    color: var(--color-info-text, #075985);
+}
 
 .live-indicator {
     display: inline-block;
