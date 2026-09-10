@@ -15,12 +15,25 @@ $vista  = 'docente-carnets';
 require dirname(__DIR__) . '/layouts/header.php';
 
 $tok = htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8');
-$sinCedula = 0;
+
+/*
+ * Los carnets se agrupan POR CARRERA.
+ *
+ * Es la pantalla desde la que se imprimen y se reparten, y una cuadrícula de
+ * nombres sueltos no dice de quién es cada uno: al entregarlos terminaban
+ * mezclados. Agrupados, cada bloque se imprime y se entrega junto.
+ */
+$sinCedula   = 0;
+$porCarrera  = [];
+
 foreach ($estudiantes as $e) {
     if (empty($e['cedula'])) {
         $sinCedula++;
     }
+    $porCarrera[$e['carrera'] ?? 'Sin carrera asignada'][] = $e;
 }
+
+ksort($porCarrera);
 ?>
 
 <nav class="breadcrumb">
@@ -70,11 +83,31 @@ foreach ($estudiantes as $e) {
     </div>
 <?php endif; ?>
 
-<!-- Filtro por semestre -->
+<!-- Filtros: carrera, semestre y alcance -->
 <div class="card card-filter mb-6 no-imprimir">
     <form method="GET" action="<?= $base ?>/docente/carnets" class="filtros-grid">
         <div class="form-group mb-0">
-            <label for="semestre" class="form-label">Filtrar por semestre</label>
+            <label for="carrera" class="form-label">Carrera</label>
+            <select id="carrera" name="carrera" class="form-select" onchange="this.form.submit()">
+                <option value="">Todas las carreras</option>
+                <?php foreach ($carreras as $c): ?>
+                    <option value="<?= (int)$c['id'] ?>" <?= (int)$carreraId === (int)$c['id'] ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($c['nombre']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+
+        <div class="form-group mb-0">
+            <label for="alcance" class="form-label">Mostrar</label>
+            <select id="alcance" name="alcance" class="form-select" onchange="this.form.submit()">
+                <option value="mios"  <?= $alcance === 'mios'  ? 'selected' : '' ?>>Solo mis estudiantes</option>
+                <option value="todos" <?= $alcance === 'todos' ? 'selected' : '' ?>>Todo el padrón</option>
+            </select>
+        </div>
+
+        <div class="form-group mb-0">
+            <label for="semestre" class="form-label">Semestre</label>
             <select id="semestre" name="semestre" class="form-select" onchange="this.form.submit()">
                 <option value="">Todos los semestres</option>
                 <?php foreach ($semestres as $s): ?>
@@ -87,8 +120,8 @@ foreach ($estudiantes as $e) {
         <div class="form-group mb-0 alinear-abajo">
             <div class="form-fila">
                 <span class="badge badge-neutral"><?= count($estudiantes) ?> estudiante(s)</span>
-                <?php if ($semestre !== ''): ?>
-                    <a href="<?= $base ?>/docente/carnets" class="btn btn-outline btn-sm">Quitar filtro</a>
+                <?php if ($semestre !== '' || $carreraId || $alcance !== 'mios'): ?>
+                    <a href="<?= $base ?>/docente/carnets" class="btn btn-outline btn-sm">Quitar filtros</a>
                 <?php endif; ?>
             </div>
         </div>
@@ -98,16 +131,34 @@ foreach ($estudiantes as $e) {
 <?php if (empty($estudiantes)): ?>
     <div class="card">
         <div class="estado-vacio">
-            <p class="estado-vacio-titulo">Todavía no hay estudiantes en el padrón</p>
-            <p class="text-muted">
-                Los alumnos se agregan solos la primera vez que registran su asistencia,
-                o puedes darlos de alta desde el panel de clase con el registro manual.
+            <p class="estado-vacio-titulo">
+                <?= $alcance === 'mios'
+                    ? 'No tienes estudiantes matriculados con esos filtros'
+                    : 'No hay estudiantes en el padrón con esos filtros' ?>
+            </p>
+            <p class="text-muted mb-4">
+                <?php if ($alcance === 'mios'): ?>
+                    Aquí salen los alumnos matriculados en tus cursos. Matricúlalos desde
+                    <a href="<?= $base ?>/docente/matriculas">Estudiantes</a>, o cambia
+                    “Mostrar” a <strong>Todo el padrón</strong> para ver los del resto del instituto.
+                <?php else: ?>
+                    Los alumnos se dan de alta desde
+                    <a href="<?= $base ?>/docente/matriculas">Estudiantes</a>, o desde el panel de
+                    clase con el registro manual.
+                <?php endif; ?>
             </p>
         </div>
     </div>
 <?php else: ?>
-    <div class="carnets-grid" data-region="carnets">
-        <?php foreach ($estudiantes as $e): ?>
+    <div data-region="carnets">
+    <?php foreach ($porCarrera as $nombreCarrera => $grupo): ?>
+        <h2 class="grupo-carrera">
+            <?= htmlspecialchars($nombreCarrera) ?>
+            <span class="grupo-carrera-cifra"><?= count($grupo) ?></span>
+        </h2>
+
+        <div class="carnets-grid">
+        <?php foreach ($grupo as $e): ?>
             <?php $nombreCompleto = trim($e['nombre'] . ' ' . $e['apellido']); ?>
             <article class="carnet">
                 <header class="carnet-cabecera">
@@ -123,6 +174,12 @@ foreach ($estudiantes as $e) {
                 <div class="carnet-datos">
                     <strong class="carnet-nombre"><?= htmlspecialchars($nombreCompleto) ?></strong>
                     <span class="carnet-codigo"><?= htmlspecialchars($e['codigo']) ?></span>
+                    <?php /* La carrera va impresa en el propio carnet: es lo que
+                             permite devolverle el suyo a cada alumno cuando se
+                             mezclan al repartirlos. */ ?>
+                    <span class="carnet-carrera <?= empty($e['carrera']) ? 'es-faltante' : '' ?>">
+                        <?= htmlspecialchars($e['carrera'] ?? 'Sin carrera asignada') ?>
+                    </span>
                     <span class="carnet-semestre"><?= htmlspecialchars($e['semestre']) ?></span>
                     <span class="carnet-cedula">
                         <?php if (!empty($e['cedula'])): ?>
@@ -142,6 +199,8 @@ foreach ($estudiantes as $e) {
                 </footer>
             </article>
         <?php endforeach; ?>
+        </div>
+    <?php endforeach; ?>
     </div>
 
     <p class="aviso-carnet no-imprimir">

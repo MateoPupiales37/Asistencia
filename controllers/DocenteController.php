@@ -17,6 +17,7 @@ require_once dirname(__DIR__) . '/libs/Geo.php';
 require_once dirname(__DIR__) . '/libs/Totp.php';
 require_once dirname(__DIR__) . '/models/Expulsion.php';
 require_once dirname(__DIR__) . '/models/Justificacion.php';
+require_once dirname(__DIR__) . '/models/Carrera.php';
 require_once dirname(__DIR__) . '/config/app.php';
 
 /**
@@ -1097,7 +1098,25 @@ class DocenteController extends BaseController
             $semestre = '';
         }
 
-        $estudiantes = Estudiante::listar($semestre);
+        $carreraId = filter_var($_GET['carrera'] ?? null, FILTER_VALIDATE_INT) ?: null;
+        if (!Carrera::existe($carreraId)) {
+            $carreraId = null;
+        }
+
+        /*
+         * Por defecto se muestran SOLO los alumnos del propio docente.
+         *
+         * El padron completo incluye carreras que este docente no dicta, y
+         * buscar los suyos ahi dentro es justamente donde aparecian las
+         * equivocaciones al repartir los carnets. Quien necesite el padron
+         * entero (secretaria imprimiendo todo de una vez) tiene la opcion
+         * "todos", pero no es lo que se ofrece primero.
+         */
+        $alcance = (($_GET['alcance'] ?? 'mios') === 'todos') ? 'todos' : 'mios';
+
+        $estudiantes = ($alcance === 'todos')
+            ? Estudiante::listar($semestre, $carreraId)
+            : Estudiante::listarDeDocente($this->idUsuarioActual(), $semestre, $carreraId);
 
         // Cada carnet lleva el token personal e irrepetible del alumno
         foreach ($estudiantes as &$e) {
@@ -1116,6 +1135,9 @@ class DocenteController extends BaseController
             'estudiantes' => $estudiantes,
             'semestres'   => Catalogo::semestres(),
             'semestre'    => $semestre,
+            'carreras'    => Carrera::listar(),
+            'carreraId'   => $carreraId,
+            'alcance'     => $alcance,
             'avisoRed'    => $this->avisoDeRed(),
             'mensaje'     => $mensaje,
             'error'       => $error,

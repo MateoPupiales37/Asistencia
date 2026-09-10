@@ -84,18 +84,75 @@ class Estudiante
     }
 
     // Listado con filtros de seleccion (no de texto libre)
-    public static function listar(string $semestre = ''): array
+    /**
+     * Padron de estudiantes activos.
+     *
+     * Trae siempre el nombre de la carrera: con cinco carreras cargadas, una
+     * lista de nombres sueltos no permite saber quien es de quien, y era lo
+     * que hacia que al repartir los carnets se confundieran unos con otros.
+     *
+     * @param int|null $carreraId Acota a una sola carrera
+     */
+    public static function listar(string $semestre = '', ?int $carreraId = null): array
     {
         $db = Database::conectar();
-        $sql = "SELECT * FROM estudiantes WHERE activo = 1";
+
+        $sql = "SELECT e.*, c.nombre AS carrera, c.codigo AS carrera_codigo
+                FROM estudiantes e
+                LEFT JOIN carreras c ON e.carrera_id = c.id
+                WHERE e.activo = 1";
         $params = [];
 
         if ($semestre !== '') {
-            $sql .= " AND semestre = ?";
+            $sql .= " AND e.semestre = ?";
             $params[] = $semestre;
         }
 
-        $sql .= " ORDER BY apellido ASC, nombre ASC";
+        if ($carreraId) {
+            $sql .= " AND e.carrera_id = ?";
+            $params[] = $carreraId;
+        }
+
+        // Agrupados por carrera y luego por apellido: es el orden en que se
+        // reparten los carnets, carrera por carrera
+        $sql .= " ORDER BY c.nombre ASC, e.apellido ASC, e.nombre ASC";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Los estudiantes que el docente tiene matriculados en SUS cursos.
+     *
+     * Es lo que de verdad necesita para imprimir carnets: el padron completo
+     * incluye alumnos de carreras que no dicta, y buscar los suyos ahi dentro
+     * es justamente donde aparecen las equivocaciones.
+     */
+    public static function listarDeDocente(int $docenteId, string $semestre = '', ?int $carreraId = null): array
+    {
+        $db = Database::conectar();
+
+        $sql = "SELECT DISTINCT e.*, c.nombre AS carrera, c.codigo AS carrera_codigo
+                FROM estudiantes e
+                JOIN matriculas mt ON mt.estudiante_id = e.id
+                JOIN cursos cu     ON mt.curso_id = cu.id
+                LEFT JOIN carreras c ON e.carrera_id = c.id
+                WHERE e.activo = 1 AND cu.docente_id = ? AND cu.activo = 1";
+        $params = [$docenteId];
+
+        if ($semestre !== '') {
+            $sql .= " AND e.semestre = ?";
+            $params[] = $semestre;
+        }
+
+        if ($carreraId) {
+            $sql .= " AND e.carrera_id = ?";
+            $params[] = $carreraId;
+        }
+
+        $sql .= " ORDER BY c.nombre ASC, e.apellido ASC, e.nombre ASC";
+
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll();
